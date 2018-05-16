@@ -3,20 +3,30 @@ from __future__ import division
 import numpy as np
 import pandas as pd
 import parser
+import shutil
 
 def start_veusz():
     # for ploting by veusz 
     print("Preparing plotting environment ...")
-    from xvfbwrapper import Xvfb
-    vdisplay = Xvfb()
-    vdisplay.start()
-    import veusz.embed
-    embed = veusz.embed.Embedded(hidden=True)
-    return embed,vdisplay
+    global isveusz
+    try:
+        import veusz.embed
+        isveusz = True
+        print("The data will be plotted by Veusz!")
+        from xvfbwrapper import Xvfb
+        vdisplay = Xvfb()
+        vdisplay.start()
+        embed = veusz.embed.Embedded(hidden=True)
+        return embed,vdisplay
+    except:
+        isveusz = False
+        print("Can't import Veusz, the data will not be plotted!")
+        return None,None
 
 def close_veusz(embed,vdisplay):
-    embed.Close()
-    vdisplay.stop()
+    if isveusz:
+        embed.Close()
+        # vdisplay.stop()
 
 def data_from_xls(filename):    
     print('Reading input excel file ...')
@@ -187,89 +197,127 @@ if __name__ == '__main__':
         data['dG_step'] = data['dG']- data['dG'].shift().fillna(0)  # 分布吸附能
 
     elif nvar == 1:
-        
-        vk,vv = variable.items()[0]
-        print('Generate G vs '+vk+' plot G_'+vk+'.vsz')
-        xdata = vv
-        if vk =='T':
-            xlabel = 'Temperature (K)'
-        else:
-            xlabel = 'ln(p('+ vk + ')/p0)'
-        # 使用点线图更方便？YES！
-        embed.Load('template.vsz')
-        all_widget = [i.name for i in embed.Root.WalkWidgets()] 
-        embed.SetData('x', xdata)
-        ymin = []
-        ymax = []
+        plot_data = {}
+        vk,vv = variable.items()[0]       
         for irow in data.index:
             nads = int(data.iloc[irow]['Nads'])
             dG = data.iloc[irow]['dG']
             dG -= nads*(u_ts+u_p)
+            plot_data[nads] = dG
+        xdata = vv
+        print('Generate G vs '+vk+' plot G_'+vk+'.vsz')
+        if vk =='T':
+            xlabel = 'Temperature (K)'
+        else:
+            xlabel = 'ln(p('+ vk + ')/p0)'
+        # 使用点线图更方便？YES！ 
+        #embed.Load('template.vsz')
+        #all_widget = [i.name for i in embed.Root.WalkWidgets()] 
+        all_widget = []
+        veusz_set = []
+        veusz_set.append("SetData('x',"+str(xdata.tolist())+")")
+        #embed.SetData('x', xdata)
+        ymin = []
+        ymax = []
+        for nads in plot_data:
+            dG = plot_data[nads].tolist()
             name = 'G' + str(nads)
             path = '/data/graph1/' + name
             if name not in all_widget:
-                embed.CloneWidget('/data/graph1/template','/data/graph1',name)
-            embed.Set(path+'/key', 'N='+str(nads))
-            embed.Set(path+'/xData','x')
-            embed.SetData(name, dG)
-            embed.Set(path+'/yData',name)
+                #embed.CloneWidget('/data/graph1/template','/data/graph1',name)
+                veusz_set.append("CloneWidget('/data/graph1/template','/data/graph1','"+name+"')")
+            veusz_set.append("Set('"+path+"/key', 'N="+str(nads)+"')")
+            veusz_set.append("Set('"+path+"/xData','x')")
+            veusz_set.append("SetData('" + name + "', " +str(dG)+")")
+            veusz_set.append("Set('"+path+"/yData','"+name+"')")
+            #embed.Set(path+'/key', 'N='+str(nads))
+            #embed.Set(path+'/xData','x')
+            #embed.SetData(name, dG)
+            #embed.Set(path+'/yData',name)
             #print function
             all_widget.append(name)
             ymin.append(min(dG))
             ymax.append(max(dG))
-        embed.Set('/data/graph1/x/min',float(min(xdata)))
-        embed.Set('/data/graph1/x/max',float(max(xdata)))
-        embed.Set('/data/graph1/x/label', xlabel)
+        veusz_set.append("Set('/data/graph1/x/min',"+str(float(min(xdata)))+")")
+        veusz_set.append("Set('/data/graph1/x/max',"+str(float(max(xdata)))+")")
+        veusz_set.append("Set('/data/graph1/x/label','"+xlabel+"')")
+        #embed.Set('/data/graph1/x/min',float(min(xdata)))
+        #embed.Set('/data/graph1/x/max',float(max(xdata)))
+        #embed.Set('/data/graph1/x/label', xlabel)
         ymin = min(ymin)
         ymax = max(ymax)
-        embed.Set('/data/graph1/y/min',float(ymin-(ymax-ymin)*0.2))
-        embed.Set('/data/graph1/y/max',float(ymax+(ymax-ymin)*0.2))
-        embed.Remove('/data/graph1/template')
-        embed.Remove('/function')
-        embed.Remove('/contour')
-        print('Export to G_'+vk+'.jpg')
-        embed.Export('G_'+vk+'.jpg',dpi=300)
-        embed.Save('G_'+vk+'.vsz')
+        veusz_set.append("Set('/data/graph1/y/min',"+str(float(ymin-(ymax-ymin)*0.2))+")")
+        veusz_set.append("Set('/data/graph1/y/max',"+str(float(ymax+(ymax-ymin)*0.2))+")")
+        #embed.Set('/data/graph1/y/min',float(ymin-(ymax-ymin)*0.2))
+        #embed.Set('/data/graph1/y/max',float(ymax+(ymax-ymin)*0.2))
+        veusz_set.append("Remove('/data/graph1/template')")
+        veusz_set.append("Remove('/function')")
+        veusz_set.append("Remove('/contour')")
+        #embed.Remove('/data/graph1/template')
+        #embed.Remove('/function')
+        #embed.Remove('/contour')
+        #print('Export to G_'+vk+'.jpg')
+        #embed.Export('G_'+vk+'.jpg',dpi=300)
+        #embed.Save('G_'+vk+'.vsz')
+        veusz_filename = 'G_'+vk+'.vsz'
+        shutil.copy2('template.vsz',veusz_filename)
+        veusz_file = open(veusz_filename,'a')
+        for  i in veusz_set:
+            veusz_file.write(i+'\n')
+        veusz_file.close()
+        # save data to .dat file
+        print('Save data to G_'+vk+'.csv')
+        plot_data['ln(p('+vk+'))'] = vv 
+        plot_df = pd.DataFrame(plot_data)
+        plot_df.set_index('ln(p('+vk+'))',inplace=True)
+        plot_df.to_csv('G_'+vk+'.csv',sep='\t',index=True,float_format='%5.3f')
+        if isveusz:
+            embed.Load(veusz_filename)
+            print('Export to G_'+vk+'.jpg')
+            embed.Export('G_'+vk+'.jpg',dpi=300)
 
     elif nvar == 2:
-        # 作图 G vs u
-        print('Generate G vs u plot G_u.vsz')
         u = np.array([u_p.min()+u_ts.min(),u_p.max()+u_ts.max()])
-        xmin,xmax = u
-        ymin = []
-        ymax = []
-        embed.Load('template.vsz')
-        all_widget = [i.name for i in embed.Root.WalkWidgets()] 
-        xdata = u
-        embed.SetData('x', xdata)
-        for irow in data.index:
-            nads = int(data.iloc[irow]['Nads'])
-            dG = data.iloc[irow]['dG']
-            dG -= nads*u
-            name = 'G' + str(nads)
-            path = '/data/graph1/' + name
-            if name not in all_widget:
-                embed.CloneWidget('/data/graph1/template','/data/graph1',name)
-            embed.Set(path+'/xData','x')
-            embed.SetData(name, dG)
-            embed.Set(path+'/yData',name)
-            embed.Set(path+'/key', 'N='+str(nads))
-            all_widget.append(name)   
-            ymin.append(min(dG))
-            ymax.append(max(dG))
-        embed.Set('/data/graph1/x/min',float(xmin))
-        embed.Set('/data/graph1/x/max',float(xmax))
-        ymin = min(ymin)
-        ymax = max(ymax)
-        embed.Set('/data/graph1/y/min',float(ymin-(ymax-ymin)*0.2))
-        embed.Set('/data/graph1/y/max',float(ymax+(ymax-ymin)*0.2))
-        embed.Remove('/data/graph1/template')
-        embed.Remove('/function')
-        embed.Remove('/contour')
-        print("Export to G_u.jpg")
-        embed.Export('G_u.jpg',dpi=300)
-        embed.Save('G_u.vsz')
-        
+        if isveusz:
+            # 作图 G vs u
+            print('Generate G vs u plot G_u.vsz')
+            xmin,xmax = u
+            ymin = []
+            ymax = []
+            embed.Load('template.vsz')
+            all_widget = [i.name for i in embed.Root.WalkWidgets()] 
+            xdata = u
+            embed.SetData('x', xdata)
+            for irow in data.index:
+                nads = int(data.iloc[irow]['Nads'])
+                dG = data.iloc[irow]['dG']
+                dG -= nads*u
+                name = 'G' + str(nads)
+                path = '/data/graph1/' + name
+                if name not in all_widget:
+                    embed.CloneWidget('/data/graph1/template','/data/graph1',name)
+                embed.Set(path+'/xData','x')
+                embed.SetData(name, dG)
+                embed.Set(path+'/yData',name)
+                embed.Set(path+'/key', 'N='+str(nads))
+                all_widget.append(name)   
+                ymin.append(min(dG))
+                ymax.append(max(dG))
+            embed.Set('/data/graph1/x/min',float(xmin))
+            embed.Set('/data/graph1/x/max',float(xmax))
+            ymin = min(ymin)
+            ymax = max(ymax)
+            embed.Set('/data/graph1/y/min',float(ymin-(ymax-ymin)*0.2))
+            embed.Set('/data/graph1/y/max',float(ymax+(ymax-ymin)*0.2))
+            embed.Remove('/data/graph1/template')
+            embed.Remove('/function')
+            embed.Remove('/contour')
+            print("Export to G_u.jpg")
+            embed.Export('G_u.jpg',dpi=300)
+            embed.Save('G_u.vsz')
+        else:
+            # save data to .dat file
+            pass
         k_notT = [i for i in variable if i!= 'T'] # get var that isnot T
         ylabel = 'ln(p('+ k_notT[0] + ')/p0)'
         ydata = np.linspace(variable[k_notT[0]][0],variable[k_notT[0]][1],quality_2d[1])
@@ -299,30 +347,33 @@ if __name__ == '__main__':
                 zgrid.append(np.zeros(xgrid.shape))
         zgrid = np.array(zgrid)
         ngrid = zgrid.argmin(0)
-
-        # 生成等值面图
-        print('Generate 2D contour ','_'.join(variable.keys())+'_2D.vsz')
-        embed.Load('template.vsz')
-        all_widget = [i.name for i in embed.Root.WalkWidgets()] 
-        embed.SetData2D('grid',ngrid,xcent=xdata,ycent=ydata)
-        embed.Set('/contour/graph1/image1/data','grid')
-        embed.Set('/contour/graph1/image1/colorMap', u'blue-darkorange')
-        embed.Set('/contour/graph1/x/label', xlabel)
-        xmin = min(xdata)
-        xmax = max(xdata)
-        embed.Set('/contour/graph1/x/min', float(xmin))
-        embed.Set('/contour/graph1/x/max', float(xmax))
-        embed.Set('/contour/graph1/y/label', ylabel)
-        ymin = min(ydata)
-        ymax = max(ydata)
-        embed.Set('/contour/graph1/y/min', float(ymin))
-        embed.Set('/contour/graph1/y/max', float(ymax))
-        embed.Remove('/data')
-        embed.Remove('/function')
-        print('Export jpg image to ','_'.join(variable.keys())+'_2D.jpg')
-        embed.Export('_'.join(variable.keys())+'_2D.jpg',dpi=300)
-        embed.Save('_'.join(variable.keys())+'_2D.vsz')
-    
+        if isveusz:
+            # 生成等值面图
+            print('Generate 2D contour ','_'.join(variable.keys())+'_2D.vsz')
+            embed.Load('template.vsz')
+            all_widget = [i.name for i in embed.Root.WalkWidgets()] 
+            embed.SetData2D('grid',ngrid,xcent=xdata,ycent=ydata)
+            embed.Set('/contour/graph1/image1/data','grid')
+            embed.Set('/contour/graph1/image1/colorMap', u'blue-darkorange')
+            embed.Set('/contour/graph1/x/label', xlabel)
+            xmin = min(xdata)
+            xmax = max(xdata)
+            embed.Set('/contour/graph1/x/min', float(xmin))
+            embed.Set('/contour/graph1/x/max', float(xmax))
+            embed.Set('/contour/graph1/y/label', ylabel)
+            ymin = min(ydata)
+            ymax = max(ydata)
+            embed.Set('/contour/graph1/y/min', float(ymin))
+            embed.Set('/contour/graph1/y/max', float(ymax))
+            embed.Remove('/data')
+            embed.Remove('/function')
+            print('Export jpg image to ','_'.join(variable.keys())+'_2D.jpg')
+            embed.Export('_'.join(variable.keys())+'_2D.jpg',dpi=300)
+            embed.Save('_'.join(variable.keys())+'_2D.vsz')
+        else:
+            pass
+            # save data to .dat file
+            
     print('Save data to excel file G_result.xslx')
     data = data[['Nads','E_slab','ZPE_slab','E_ads','ZPE_ads','E_total','ZPE_total','dG','dG_avg','dG_step']]
     data.to_excel('G_result.xlsx',float_format='%.4f',index=False)
