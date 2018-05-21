@@ -81,7 +81,7 @@ def parse_formula(s):
     check_formula(s)
     result = []
     var = ''
-    for id,i in enumerate(s):
+    for i in s:
         if i in '+-*/()':
             if var != '':
                 result.append(var)
