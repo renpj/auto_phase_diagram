@@ -2,7 +2,7 @@
 Automatic analysis and plot surface phase diagram from DFT calculation.
 
 ## Pre-request
-* python >=2.7, not test for python 3 and python < 2.7
+* python >=2.7, not test for python < 2.7
 * numpy
 * pandas (data analysis)
 * xlrt, xlwt (handle excel file)

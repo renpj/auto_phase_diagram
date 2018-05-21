@@ -70,7 +70,8 @@ def check_formula(s):
     try:
         eval(s)
     except Exception as e:
-        print(' '.join(e,s))
+        msg = " ".join([e,s])
+        print(msg)
         exit(0)
     
 def parse_formula(s):
@@ -100,7 +101,7 @@ def rebuild_formula(s,map):
     map = {'old_var':'new_var'}
     '''
     l = parse_formula(s)
-    for k,v in map.iteritems():
+    for k,v in map.items():
         nl = [v if il==k else il for il in l]
     ns = ''.join(nl)
     return ns
@@ -116,7 +117,7 @@ def get_ref(ref_data,formula):
     t = ref_data['Temperature'][0]
     if pd.isnull(t):
         ref['T'] = 298.15 # default value for ref['T']
-    elif type(t) == np.float64: # t is a number, type is from pandas
+    elif type(t) == type(np.float64(0)): # t is a number, type is from pandas
         ref['T'] = t
     else: # t is a variable
         try:
@@ -149,7 +150,7 @@ def get_ref(ref_data,formula):
         elif p.size == 0 or p.isnull().iloc[0]:
             ref['p'][iname] = 0 # unit ln(bar)
         else:
-            if type(p.iloc[0]) == np.float64:
+            if type(p.iloc[0]) == type(np.float64(0)):
                 ref['p'][iname] = p.iloc[0]
             else:
                 try:
@@ -164,12 +165,12 @@ def get_ref(ref_data,formula):
  
 def p_formula(ref,formula):
     map = {}
-    for k in ref['p'].iterkeys():
+    for k in ref['p'].keys():
         map[k] = 'ref["p"]["'+k+'"]'
     return rebuild_formula(formula,map)
 def s_formula(ref,formula):
     map = {}
-    for k in ref['S'].iterkeys():
+    for k in ref['S'].keys():
         map[k] = 'ref["S"]["' + k + '"]'
     return rebuild_formula(formula,map)
     
@@ -204,7 +205,7 @@ if __name__ == '__main__':
 
     elif nvar == 1:
         plot_data = {}
-        vk,vv = variable.items()[0]       
+        vk,vv = list(variable.items())[0]       
         for irow in data.index:
             nads = int(data.iloc[irow]['Nads'])
             dG = data.iloc[irow]['dG']
