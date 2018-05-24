@@ -30,8 +30,9 @@ def close_veusz(embed,vdisplay):
 
 def data_from_xls(filename):    
     print('Reading input excel file ...')
-    input_data = pd.read_excel(filename,sheetname=0)
-    ref_data = pd.read_excel(filename,sheetname=1)
+    allsheet = pd.read_excel(filename,sheetname=None)
+    input_data = allsheet['data']
+    ref_data = allsheet['ref']
     print('Initialize data ...')
     data = input_data.dropna(subset=['Nads','E_total']) # remove rows that are NaN for Nads and E_total
     data = data.dropna(axis=1,how='all')
