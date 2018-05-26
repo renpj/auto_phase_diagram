@@ -33,30 +33,39 @@ def data_from_xls(filename):
     allsheet = pd.read_excel(filename,sheetname=None)
     input_data = allsheet['data']
     ref_data = allsheet['ref']
+    ref_detail = {}
+    for s in allsheet:
+        if s.startwith('ref_'):
+            name = s[4:]
+            ref_detail[name] = allsheet[s]
     print('Initialize data ...')
     data = input_data.dropna(subset=['Nads','E_total']) # remove rows that are NaN for Nads and E_total
     data = data.dropna(axis=1,how='all')
-    return data,ref_data
+    return data,ref_data,ref_detail
     
-def check_data(data):
+def check_data(data,ref):
     # data is a pandas.DataFrame
-    require_col = set((u'Nads', u'E_slab', u'E_total',))
+    require_col = (u'Nads', u'E_slab', u'E_total','Formula_ads')
     if not require_col.issubset(set(data.columns)):
-        print('Error: Required Columns are ', ', '.join(list(require_col)))
+        print('Error: Required Columns are ', ', '.join(require_col))
 
-    for icol in ('E_slab','E_ads','ZPE_slab','ZPE_ads','ZPE_total'): # fill NaN with i[0]
+    for icol in ('Name','E_slab','ZPE_slab','ZPE_total','Formula_ads'): # fill NaN with i[0], else 0
         v = data[icol][0]
         if pd.isnull(data[icol][0]):
-            v = 0.0
+            v = 0
         data[icol] = data[icol].fillna(v)
         if not np.all(data[icol] == v): # these cols should have the same values!
             print('Error: This column should have the same values: ', icol)
             
-    data = data.groupby(by='Nads',as_index=False).agg(min) # 聚合相同的Nads, 取最小值。注意，没有作为新的index。
+    for icol in ('dH','ZPE','E'):
+        e_ads = [eval(new_formula(ref,f,icol)) for f in data['Formula_ads']]
+        data[icol+'_ads'] = e_ads
+
+    data = data.groupby(by=['Name','Nads'],as_index=False).agg(min) # 聚合相同的Nads, 取最小值。注意，没有作为新的index。
 
     data['G_slab'] = data['E_slab'] + data['ZPE_slab']
     data['G_total'] = data['E_total'] + data['ZPE_total']
-    data['G_ads'] = (data['E_ads'] + data['ZPE_ads'])*data['Nads']
+    data['G_ads'] = (data['E_ads'] + data['ZPE_ads'] + data['dH_ads'])*data['Nads']
 
     data['dG'] = data['G_total'] - data['G_slab'] - data['G_ads']
     data['dG_avg'] = data['dG']/data['Nads'] # 平均吸附能
@@ -107,7 +116,7 @@ def rebuild_formula(s,map):
     ns = ''.join(nl)
     return ns
 
-def get_ref(ref_data,formula):
+def get_ref(ref_data,ref_detail,formula):
     '''
     ref_data is pandas.DataFrame, formula is string.
     '''
@@ -129,26 +138,43 @@ def get_ref(ref_data,formula):
                 ref['T'] = ref['T'][0]
         except:
             print("Error: Please check the temperature format!")
-
+            break
+    
     ref['S'] = {}
     ref['p'] = {}
+    ref['dH'] = {}
+    ref['E'] = {}
+    ref['ZPE'] = {}
+    ref['u'] = {}
     for iname in co_names:
-        # assign entropy
-        S = ref_data[ref_data.Ref == iname]['S']
-        if S.size > 1:
-            print ("Error: Duplicated S for "+iname)
+        # assign dH,E,ZPE,u,S
+        row = ref_data[ref_data.Ref == iname]
+        if rd.size != 1:
+            print ("Error: Duplicated or NO row for "+iname)
             break
-        elif S.size == 0 or S.isnull().iloc[0]:
-            print ("Error: No S vaule for "+iname)
-            break
-        ref['S'][iname] = S.iloc[0]
-    
+        
+        for r in ('E','ZPE',):
+            rd = row[r]
+            if rd.isnull().iloc[0]:
+                print ("Error: NO E or ZPE for "+iname)
+                break
+            else:
+                ref[r][iname] = rd.iloc[0]
+        
+        for r in ('S','dH',):
+            rd = row[r]
+            if rd.notnull().iloc[0]:
+                ref[r][iname] = rd.iloc[0]
+            else:
+                if iname in ref_detail: # use S(T) and dH(T)
+                    
+                else:
+                    print ("Error: No "+r+" vaule for "+iname)
+                    break
+            
         # assign pressure
-        p = ref_data[ref_data.Ref == iname]['Press']
-        if p.size > 1:
-            print ("Error: Duplicated press for "+iname)
-            break
-        elif p.size == 0 or p.isnull().iloc[0]:
+        p = row['Press']
+        if p.isnull().iloc[0]:
             ref['p'][iname] = 0 # unit ln(bar)
         else:
             if type(p.iloc[0]) == type(np.float64(0)):
@@ -162,17 +188,16 @@ def get_ref(ref_data,formula):
                         ref['p'][iname] = ref['p'][iname][0]
                 except Exception as e:
                     print("Error: Please check the Press format!",e)
+                    break
+        # get u
+        u = row['u']
+        
     return ref,variable
  
-def p_formula(ref,formula):
+def new_formula(ref,formula,name):
     map = {}
-    for k in ref['p'].keys():
-        map[k] = 'ref["p"]["'+k+'"]'
-    return rebuild_formula(formula,map)
-def s_formula(ref,formula):
-    map = {}
-    for k in ref['S'].keys():
-        map[k] = 'ref["S"]["' + k + '"]'
+    for k in ref[name].keys():
+        map[k] = 'ref["'+name+'"]["'+k+'"]'
     return rebuild_formula(formula,map)
     
 if __name__ == '__main__':
@@ -185,12 +210,16 @@ if __name__ == '__main__':
         print("usage: auto_phase_diagram.py xls_file")
         exit(0)
     filename = args[1]
-    input_data,ref_data = data_from_xls(filename)
-    data = check_data(input_data)
-    formula = input_data['Formula_ads'][0]
-    ref,variable = get_ref(ref_data,formula)
-    pf = p_formula(ref,formula)
-    sf = s_formula(ref,formula)
+    input_data,ref_data,ref_detail = data_from_xls(filename)
+    formula = input_data['Formula_ads'] #???????
+    ref,variable = {},{}
+    for nf in formula:
+        iref,iv = get_ref(ref_data,ref_detail,formula)
+        ref.update(iref)
+        variable.update(iv)
+    data = check_data(input_data,ref)
+    pf = new_formula(ref,formula,'p')
+    sf = new_formula(ref,formula,'S')
     u_p = 8.314*ref['T']*eval(pf)/1000/96.4853
     u_ts = -ref['T']*eval(sf)
     nvar = len(variable)
