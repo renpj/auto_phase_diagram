@@ -45,7 +45,7 @@ def data_from_xls(filename):
     
 def check_data(data,ref):
     # data is a pandas.DataFrame
-    require_col = (u'Nads', u'E_slab', u'E_total','Formula_ads')
+    require_col = set((u'Nads', u'E_slab', u'E_total','Formula_ads'))
     if not require_col.issubset(set(data.columns)):
         print('Error: Required Columns are ', ', '.join(require_col))
 
@@ -138,7 +138,7 @@ def get_ref(ref_data,ref_detail,formula):
                 ref['T'] = ref['T'][0]
         except:
             print("Error: Please check the temperature format!")
-            break
+            exit(0)
     
     ref['S'] = {}
     ref['p'] = {}
@@ -149,7 +149,7 @@ def get_ref(ref_data,ref_detail,formula):
     for iname in co_names:
         # assign dH,E,ZPE,u,S
         row = ref_data[ref_data.Ref == iname]
-        if rd.size != 1:
+        if row.size != 1:
             print ("Error: Duplicated or NO row for "+iname)
             break
         
@@ -164,10 +164,18 @@ def get_ref(ref_data,ref_detail,formula):
         for r in ('S','dH',):
             rd = row[r]
             if rd.notnull().iloc[0]:
-                ref[r][iname] = rd.iloc[0]
+                ref[r][iname] = lambda x:rd.iloc[0]*np.ones(x.shape) # 形式一致性，返回np.array 
             else:
                 if iname in ref_detail: # use S(T) and dH(T)
-                    
+                    v = ref_detail[iname]
+                    if r in ref_detail.columns:
+                        if np.all(pd.notnull(v[r])):
+                            ref[r][iname] = lambda x: np.interp(x,v['T'],v[r])
+                        else:
+                            print("Error: pls check ref_"+iname)
+                            break
+                    else:
+                        ref[r][iname] = lambda x: np.zeros(x.shape)
                 else:
                     print ("Error: No "+r+" vaule for "+iname)
                     break
