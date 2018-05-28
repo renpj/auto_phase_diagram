@@ -35,12 +35,12 @@ def data_from_xls(filename):
     ref_data = allsheet['ref']
     ref_detail = {}
     for s in allsheet:
-        if s.startwith('ref_'):
+        if s.startswith('ref_'):
             name = s[4:]
             ref_detail[name] = allsheet[s]
     print('Initialize data ...')
     data = input_data.dropna(subset=['Nads','E_total']) # remove rows that are NaN for Nads and E_total
-    data = data.dropna(axis=1,how='all')
+    data = data.dropna(axis=0,how='all')
     return data,ref_data,ref_detail
     
 def check_data(data,ref):
@@ -54,10 +54,8 @@ def check_data(data,ref):
         if pd.isnull(data[icol][0]):
             v = 0
         data[icol] = data[icol].fillna(v)
-        if not np.all(data[icol] == v): # these cols should have the same values!
-            print('Error: This column should have the same values: ', icol)
             
-    for icol in ('dH','ZPE','E'):
+    for icol in ('dZPE','E'):
         e_ads = [eval(new_formula(ref,f,icol)) for f in data['Formula_ads']]
         data[icol+'_ads'] = e_ads
 
@@ -65,7 +63,7 @@ def check_data(data,ref):
 
     data['G_slab'] = data['E_slab'] + data['ZPE_slab']
     data['G_total'] = data['E_total'] + data['ZPE_total']
-    data['G_ads'] = (data['E_ads'] + data['ZPE_ads'] + data['dH_ads'])*data['Nads']
+    data['G_ads'] = (data['E_ads'] + data['dZPE_ads'])*data['Nads']
 
     data['dG'] = data['G_total'] - data['G_slab'] - data['G_ads']
     data['dG_avg'] = data['dG']/data['Nads'] # 平均吸附能
@@ -122,76 +120,86 @@ def get_ref(ref_data,ref_detail,formula):
     '''
     variable = {} # if T or p are variables, store them
     ref = {}
-    co_names = parser.expr(formula).compile().co_names
+    co_names = set([name for nf in formula for name in parser.expr(nf).compile().co_names])
     # get T
-    t = ref_data['Temperature'][0]
-    if pd.isnull(t):
+    t = ref_data['Temperature']
+    t = t[pd.notnull(t)]
+    if len(t) > 1:
+        print("Error: Pls Check Temperature Input!")
+        exit(0)
+    elif len(t)==0:
         ref['T'] = 298.15 # default value for ref['T']
-    elif type(t) == type(np.float64(0)): # t is a number, type is from pandas
-        ref['T'] = t
-    else: # t is a variable
-        try:
-            ref['T'] = np.array(eval(t))
-            if ref['T'][0] != ref['T'][1]:
-                variable['T'] = ref['T']
-            else:
-                ref['T'] = ref['T'][0]
-        except:
-            print("Error: Please check the temperature format!")
-            exit(0)
+    else:
+        t = t.iloc[0]
+        if type(t) == type(np.float64(0)): # t is a number, type is from pandas
+            ref['T'] = t
+        else: # t is a variable
+            try:
+                ref['T'] = np.array(eval(t))
+                if ref['T'][0] != ref['T'][1]:
+                    variable['T'] = ref['T']
+                else:
+                    ref['T'] = ref['T'][0]
+            except:
+                print("Error: Please check the temperature format!")
+                exit(0)
     
     ref['S'] = {}
     ref['p'] = {}
-    ref['dH'] = {}
+    ref['HT'] = {}
     ref['E'] = {}
-    ref['ZPE'] = {}
+    ref['dZPE'] = {}
     ref['u'] = {}
     for iname in co_names:
-        # assign dH,E,ZPE,u,S
+        # assign HT,E,dZPE,u,S
         row = ref_data[ref_data.Ref == iname]
-        if row.size != 1:
+        if row.shape[0] != 1:
             print ("Error: Duplicated or NO row for "+iname)
             break
         
-        for r in ('E','ZPE',):
+        for r in ('E','dZPE',):
             rd = row[r]
             if rd.isnull().iloc[0]:
-                print ("Error: NO E or ZPE for "+iname)
+                print ("Error: NO E or dZPE for "+iname)
                 break
             else:
                 ref[r][iname] = rd.iloc[0]
         
-        for r in ('S','dH',):
+        for r in ('S','HT',):
             rd = row[r]
             if rd.notnull().iloc[0]:
-                ref[r][iname] = lambda x:rd.iloc[0]*np.ones(x.shape) # 形式一致性，返回np.array 
+                c = str(rd.iloc[0])
+                ref[r][iname] = lambda x:eval(c) # 形式一致性
             else:
-                if iname in ref_detail: # use S(T) and dH(T)
+                if iname in ref_detail: # use S(T) and H(T)
                     v = ref_detail[iname]
-                    if r in ref_detail.columns:
+                    if r in v.columns:
                         if np.all(pd.notnull(v[r])):
                             ref[r][iname] = lambda x: np.interp(x,v['T'],v[r])
                         else:
                             print("Error: pls check ref_"+iname)
                             break
                     else:
-                        ref[r][iname] = lambda x: np.zeros(x.shape)
+                        ref[r][iname] = lambda x: 0.0
                 else:
                     print ("Error: No "+r+" vaule for "+iname)
                     break
             
         # assign pressure
         p = row['Press']
+
         if p.isnull().iloc[0]:
             ref['p'][iname] = 0 # unit ln(bar)
         else:
             if type(p.iloc[0]) == type(np.float64(0)):
-                ref['p'][iname] = p.iloc[0]
+                ref['p'][iname] = np.log(p.iloc[0])
             else:
                 try:
                     ref['p'][iname] = np.array(np.log(eval(p.iloc[0]))) # ln(p)
                     if ref['p'][iname][0] != ref['p'][iname][1]:
-                        variable[iname] = ref['p'][iname]
+                        if 'p' not in variable:
+                            variable['p'] = {} 
+                        variable['p'][iname] = ref['p'][iname]
                     else:
                         ref['p'][iname] = ref['p'][iname][0]
                 except Exception as e:
@@ -199,7 +207,23 @@ def get_ref(ref_data,ref_detail,formula):
                     break
         # get u
         u = row['u']
-        
+        if u.isnull().iloc[0]:
+            ref['u'][iname] = None 
+        else:
+            if type(u.iloc[0]) == type(np.float64(0)):
+                ref['u'][iname] = u.iloc[0]
+            else:
+                try:
+                    ref['u'][iname] = np.array(np.log(eval(u.iloc[0]))) # ln(p)
+                    if ref['u'][iname][0] != ref['u'][iname][1]:
+                        if 'u' not in variable:
+                            variable['u'] = {}                         
+                        variable['u'][iname] = ref['u'][iname]
+                    else:
+                        ref['p']['u'][iname] = ref['u'][iname][0]
+                except Exception as e:
+                    print("Error: Please check the u format!",e)
+                    break
     return ref,variable
  
 def new_formula(ref,formula,name):
@@ -207,7 +231,62 @@ def new_formula(ref,formula,name):
     for k in ref[name].keys():
         map[k] = 'ref["'+name+'"]["'+k+'"]'
     return rebuild_formula(formula,map)
-    
+
+def plot_1D(plot_dict):
+    """
+    plot_dict keys:
+        embed: veusz.embed.Embedded or None
+        xlabel: str
+        xdata: numpy.array
+        ydata: dict, {Nads:value}
+        output: str
+    """
+    xdata = plot_dict['xdata']
+    xlabel = plot_dict['xlabel']
+    veusz_set = []
+    veusz_set.append("SetData('x',"+str(xdata.tolist())+")")
+    ydata = plot_dict['ydata']
+    ymin = []
+    ymax = []
+    for nads in ydata:
+        dG = ydata[nads].tolist()
+        name = 'G' + str(nads)
+        path = '/data/graph1/' + name
+        veusz_set.append("CloneWidget('/data/graph1/template','/data/graph1','"+name+"')")
+        veusz_set.append("Set('"+path+"/key', 'N="+str(nads)+"')")
+        veusz_set.append("Set('"+path+"/xData','x')")
+        veusz_set.append("SetData('" + name + "', " +str(dG)+")")
+        veusz_set.append("Set('"+path+"/yData','"+name+"')")
+        ymin.append(min(dG))
+        ymax.append(max(dG))
+    veusz_set.append("Set('/data/graph1/x/min',"+str(float(min(xdata)))+")")
+    veusz_set.append("Set('/data/graph1/x/max',"+str(float(max(xdata)))+")")
+    veusz_set.append("Set('/data/graph1/x/label','"+xlabel+"')")
+    ymin = min(ymin)
+    ymax = max(ymax)
+    veusz_set.append("Set('/data/graph1/y/min',"+str(float(ymin-(ymax-ymin)*0.2))+")")
+    veusz_set.append("Set('/data/graph1/y/max',"+str(float(ymax+(ymax-ymin)*0.2))+")")
+    veusz_set.append("Remove('/data/graph1/template')")
+    veusz_set.append("Remove('/contour')")
+    # save to vsz
+    output_filename = plot_dict['output']
+    shutil.copy2('template.vsz',output_filename+'.vsz')
+    veusz_file = open(output_filename+'.vsz','a')
+    for  i in veusz_set:
+        veusz_file.write(i+'\n')
+    veusz_file.close()
+    # save data to .dat file
+    print('Save data to '+output_filename+'.csv')
+    ydata[xlabel] = xdata 
+    data_df = pd.DataFrame(ydata)
+    data_df.set_index(xlabel,inplace=True)
+    data_df.to_csv(output_filename+'.csv',index=True,float_format='%5.3f')
+    embed = plot_dict['embed']
+    if embed is not None:
+        embed.Load(output_filename+'.vsz')
+        print('Export to '+output_filename+'.jpg')
+        embed.Export(output_filename+'.jpg',dpi=300)
+
 if __name__ == '__main__':
     # Constant
     quality_2d = (500,500) # the quality for 2D contour map
@@ -219,85 +298,106 @@ if __name__ == '__main__':
         exit(0)
     filename = args[1]
     input_data,ref_data,ref_detail = data_from_xls(filename)
-    formula = input_data['Formula_ads'] #???????
+    formula = input_data['Formula_ads'] # formula is pd.Series
     ref,variable = {},{}
     for nf in formula:
-        iref,iv = get_ref(ref_data,ref_detail,formula)
+        iref,iv = get_ref(ref_data,ref_detail,nf)
         ref.update(iref)
         variable.update(iv)
     data = check_data(input_data,ref)
-    pf = new_formula(ref,formula,'p')
-    sf = new_formula(ref,formula,'S')
-    u_p = 8.314*ref['T']*eval(pf)/1000/96.4853
-    u_ts = -ref['T']*eval(sf)
+    pf = [new_formula(ref,f,'p') for f in formula] # for pressure
+    sf = [new_formula(ref,f,'S') for f in formula] # for entropy
+    hf = [new_formula(ref,f,'HT') for f in formula] # for HT
+    u_p = np.array([8.314*ref['T']*eval(ipf)/1000/96.4853 for ipf in pf])
+    u_ts = []
+    for isf in sf:
+        if 'T' in variable:
+            u_ts.append(eval(isf)) # return a list of function(just entropy)
+        else:
+            u_ts.append(-ref['T']*eval(isf)(ref['T']))
+    u_ts = np.array(u_ts)
+    u_HT = []
+    for ihf in hf:
+        if 'T' in variable:
+            u_HT.append(eval(ihf)) # return a list of function
+        else:
+            u_HT.append(eval(ihf)(ref['T']))
+    u_HT = np.array(u_HT)
     nvar = len(variable)
     print("Number of variable is "+str(nvar))
     embed,vdisplay = start_veusz()
     
     if nvar == 0:
         # 这意味着p和T都是一个值, 不做图
-        data['G_ads'] = (data['E_ads'] + data['ZPE_ads'] + u_p + u_ts)*data['Nads']
-        data['dG'] = data['G_total'] - data['G_slab'] - data['G_ads']
+        data['u_ads'] = (u_p + u_ts + u_HT)
+        data['G_ads'] += data['u_ads']*data['Nads']
+        data['dG'] -= data['u_ads']*data['Nads']
         data['dG_avg'] = data['dG']/data['Nads'] # 平均吸附能
         data['dG_step'] = data['dG']- data['dG'].shift().fillna(0)  # 分布吸附能
 
     elif nvar == 1:
-        plot_data = {}
+        plot_dict = {}
         vk,vv = list(variable.items())[0]       
-        for irow in data.index:
+        if vk == 'T':
+            plot_dict['xlabel'] = 'Temperature (K)'
+            T = np.linspace(vv[0],vv[1],quality_2d[0])
+            S = np.array([[fs(it) for it in T] for fs in u_ts])
+            u_ts = -(T*S)
+            HT = np.array([[fh(it) for it in T] for fh in u_HT])
+            u_HT = HT
+            u_p = np.array([8.314*T*eval(ipf)/1000/96.4853 for ipf in pf]) # recalculate u_p, due to T has changed
+            plot_dict['xdata'] = T
+            plot_dict['output'] = 'G_'+vk
+        else:
+            plot_dict['xlabel'] = 'ln(p('+ vv.keys()[0] + ')/p0)'
+            plot_dict['xdata'] = vv.values()[0]
+            plot_dict['output'] = 'G_'+vk+'_'+vv.keys()[0]
+        ydata = {}
+        for irow in range(len(data)):
             nads = int(data.iloc[irow]['Nads'])
             dG = data.iloc[irow]['dG']
-            dG -= nads*(u_ts+u_p)
-            plot_data[nads] = dG
-        xdata = vv
-        print('Generate G vs '+vk+' plot G_'+vk+'.vsz')
-        if vk =='T':
-            xlabel = 'Temperature (K)'
-        else:
-            xlabel = 'ln(p('+ vk + ')/p0)'
-        veusz_set = []
-        veusz_set.append("SetData('x',"+str(xdata.tolist())+")")
-        ymin = []
-        ymax = []
-        for nads in plot_data:
-            dG = plot_data[nads].tolist()
-            name = 'G' + str(nads)
-            path = '/data/graph1/' + name
-            veusz_set.append("CloneWidget('/data/graph1/template','/data/graph1','"+name+"')")
-            veusz_set.append("Set('"+path+"/key', 'N="+str(nads)+"')")
-            veusz_set.append("Set('"+path+"/xData','x')")
-            veusz_set.append("SetData('" + name + "', " +str(dG)+")")
-            veusz_set.append("Set('"+path+"/yData','"+name+"')")
-            ymin.append(min(dG))
-            ymax.append(max(dG))
-        veusz_set.append("Set('/data/graph1/x/min',"+str(float(min(xdata)))+")")
-        veusz_set.append("Set('/data/graph1/x/max',"+str(float(max(xdata)))+")")
-        veusz_set.append("Set('/data/graph1/x/label','"+xlabel+"')")
-        ymin = min(ymin)
-        ymax = max(ymax)
-        veusz_set.append("Set('/data/graph1/y/min',"+str(float(ymin-(ymax-ymin)*0.2))+")")
-        veusz_set.append("Set('/data/graph1/y/max',"+str(float(ymax+(ymax-ymin)*0.2))+")")
-        veusz_set.append("Remove('/data/graph1/template')")
-        veusz_set.append("Remove('/contour')")
-        # save to vsz
-        output_filename = 'G_'+vk
-        shutil.copy2('template.vsz',output_filename+'.vsz')
-        veusz_file = open(output_filename+'.vsz','a')
-        for  i in veusz_set:
-            veusz_file.write(i+'\n')
-        veusz_file.close()
-        # save data to .dat file
-        print('Save data to '+output_filename+'.csv')
-        plot_data[xlabel] = xdata 
-        plot_df = pd.DataFrame(plot_data)
-        plot_df.set_index(xlabel,inplace=True)
-        plot_df.to_csv(output_filename+'.csv',index=True,float_format='%5.3f')
-        if isveusz:
-            embed.Load(output_filename+'.vsz')
-            print('Export to '+output_filename+'.jpg')
-            embed.Export(output_filename+'.jpg',dpi=300)
+            dG -= nads*(u_ts[irow]+u_p[irow]+u_HT[irow])
+            ydata[nads] = dG
+        plot_dict['ydata'] = ydata
+        plot_dict['embed'] = embed
+        
+        plot_1D(plot_dict)
 
-    elif nvar == 2:           
+    elif nvar == 2:      
+        """
+        Three cases: (T,p), (p1,p2), (u1,u2)
+        """     
+        keys = variable.keys()
+        plot_dict = {}
+        if ('T' in keys) and ('p' in keys):
+            plot_dict['xlabel'] = 'T(K)'
+            pk = variable['p'].keys()[0]
+            pv = variable['p'].values()[0]
+            xdata = np.linspace(variable['T'][0],variable['T'][1],quality_2d[0])
+            ydata = np.linspace(pv[0],pv[1],quality_2d[1])
+            xgrid,ygrid = np.meshgrid(xdata,ydata)
+            ref['T'] = xgrid
+            ref['p'][pk] = ygrid
+        elif ('p' in keys) and len(set(keys))==1:
+            pk = variable['p'].keys()
+            pv = variable['p'].values()
+            plot_dict['xlabel'] = 'ln(p('+ pk[0] + ')/p0)'
+            plot_dict['ylabel'] = 'ln(p('+ pk[1] + ')/p0)'
+            xdata = np.linspace(pv[0][0],pv[0][1],quality_2d[0])
+            ydata = np.linspace(pv[1][0],pv[1][1],quality_2d[1])
+            xgrid,ygrid = np.meshgrid(xdata,ydata)
+            ref['p'][pk[0]] = xgrid
+            ref['p'][pk[1]] = ygrid
+        elif ('u' in keys) and len(set(keys))==1:
+            uk = variable['u'].keys()
+            uv = variable['u'].values()
+            plot_dict['xlabel'] = 'u('+ uk[0] + ') (eV)'
+            plot_dict['ylabel'] = 'u('+ uk[1] + ') (eV)'
+            xdata = np.linspace(uv[0][0],uv[0][1],quality_2d[0])
+            ydata = np.linspace(uv[1][0],uv[1][1],quality_2d[1])
+            xgrid,ygrid = np.meshgrid(xdata,ydata)
+            ref['u'][uk[0]] = xgrid
+            ref['u'][uk[1]] = ygrid
         # Get 2D contour data
         k_notT = [i for i in variable if i!= 'T'] # get var that isnot T
         ylabel = 'ln(p('+ k_notT[0] + ')/p0)'
