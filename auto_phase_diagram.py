@@ -129,7 +129,7 @@ def get_ref(ref_data,ref_detail,formula):
         ref['T'] = 298.15 # default value for ref['T']
     else:
         t = t.iloc[0]
-        if type(t) == type(np.float64(0)): # t is a number, type is from pandas
+        if type(t) in (np.float64,int,float): # t is a number, type is from pandas
             ref['T'] = t
         else: # t is a variable
             try:
@@ -209,21 +209,22 @@ def get_ref(ref_data,ref_detail,formula):
             # get u
             u = row['u']
             if u.isnull().iloc[0]:
-                ref['u'][iname] = None 
+                ref['u'][iname] = None # default None
             else:
-                if type(u.iloc[0]) == type(np.float64(0)):
+                if  type(u.iloc[0]) in (np.float64,int,float):
                     ref['u'][iname] = u.iloc[0]
                 else:
                     try:
-                        ref['u'][iname] = np.array(np.log(eval(u.iloc[0]))) # ln(p)
+                        ref['u'][iname] = np.array(eval(u.iloc[0])) # ln(p)
                         if ref['u'][iname][0] != ref['u'][iname][1]:
                             if 'u' not in variable:
                                 variable['u'] = {}                         
                             variable['u'][iname] = ref['u'][iname]
                         else:
-                            ref['p']['u'][iname] = ref['u'][iname][0]
+                            ref['u'][iname] = ref['u'][iname][0]
                     except Exception as e:
                         print("Error: Please check the u format!",e)
+                        print(u)
                         break
     return ref,variable
  
@@ -260,6 +261,7 @@ def plot_1D(plot_dict):
         veusz_set.append("Set('"+path+"/xData','x')")
         veusz_set.append("SetData('" + name + "', " +str(dG)+")")
         veusz_set.append("Set('"+path+"/yData','"+name+"')")
+        print nads,dG
         ymin.append(min(dG))
         ymax.append(max(dG))
     veusz_set.append("Set('/data/graph1/x/min',"+str(float(min(xdata)))+")")
@@ -356,12 +358,12 @@ if __name__ == '__main__':
     formula = input_data['Formula_ads'] # formula is pd.Series
     ref,variable =  get_ref(ref_data,ref_detail,formula)
     data = check_data(input_data,ref)
+    # pressure part
     pf = [new_formula(ref,f,'p') for f in formula] # for pressure
-    sf = [new_formula(ref,f,'S') for f in formula] # for entropy
-    hf = [new_formula(ref,f,'HT') for f in formula] # for HT
     u_p = np.array([8.314*ref['T']*eval(ipf)/1000/96.4853 for ipf in pf])
+    # entropy part
+    sf = [new_formula(ref,f,'S') for f in formula] # for entropy
     u_ts = []
-    print sf
     for isf in sf:
         if 'T' in variable:
             u_ts.append(isf) # return a list of function(just entropy)
@@ -369,6 +371,8 @@ if __name__ == '__main__':
             T = ref['T']
             u_ts.append(-T*eval(isf))
     u_ts = np.array(u_ts)
+    # enthalpy correction
+    hf = [new_formula(ref,f,'HT') for f in formula] # for HT
     u_HT = []
     for ihf in hf:
         if 'T' in variable:
@@ -377,6 +381,9 @@ if __name__ == '__main__':
             T = ref['T']
             u_HT.append(eval(ihf))
     u_HT = np.array(u_HT)
+    # directly for u
+    uf = [new_formula(ref,f,'u') for f in formula] # for u
+    u = np.array([eval(iuf) for iuf in uf])
     nvar = len(variable)
     print("Number of variable is "+str(nvar))
     embed,vdisplay = start_veusz()
@@ -400,17 +407,27 @@ if __name__ == '__main__':
             HT = np.array([eval(fh) for fh in u_HT])
             u_HT = HT
             u_p = np.array([8.314*T*eval(ipf)/1000/96.4853 for ipf in pf]) # recalculate u_p, due to T has changed
+            u = u_ts + u_p + u_HT
             plot_dict['xdata'] = T
             plot_dict['output'] = 'G_'+vk
-        else:
+        elif vk == 'p':
+            u = u_ts + u_p + u_HT
             plot_dict['xlabel'] = 'ln(p('+ vv.keys()[0] + ')/p0)'
             plot_dict['xdata'] = vv.values()[0]
             plot_dict['output'] = 'G_'+vk+'_'+vv.keys()[0]
+        elif vk == 'u':
+            plot_dict['xlabel'] = 'u('+ vv.keys()[0] + ') (eV)'
+            plot_dict['xdata'] = vv.values()[0]
+            plot_dict['output'] = 'G_'+vk+'_'+vv.keys()[0]
+        else:
+            print('Unsupport variable!')
+            exit(0)
+        print u
         ydata = {}
         for irow in range(len(data)):
             nads = int(data.iloc[irow]['Nads'])
             dG = data.iloc[irow]['dG']
-            dG -= nads*(u_ts[irow]+u_p[irow]+u_HT[irow])
+            dG -= nads*u[irow]
             ydata[nads] = dG
         plot_dict['ydata'] = ydata
         plot_dict['embed'] = embed
@@ -462,11 +479,10 @@ if __name__ == '__main__':
             xgrid,ygrid = np.meshgrid(xdata,ydata)
             ref['u'][uk[0]] = xgrid.reshape(quality_2d[0]*quality_2d[1])
             ref['u'][uk[1]] = ygrid.reshape(quality_2d[0]*quality_2d[1])
-            uf = [new_formula(ref,f,'u') for f in formula] # for u
             u = np.array([eval(iuf) for iuf in uf])
 
         else:
-            print("Does not support 2D plot for: "+str(keys))
+            print("Unsupport 2D plot for: "+str(keys))
             exit(0)
 
         # Get 2D data
