@@ -152,7 +152,7 @@ def get_ref(ref_data,ref_detail,formula):
     ref['u'] = {}
     for iname in co_names:
         # assign HT,E,dZPE,u,S
-        row = ref_data[ref_data.Ref == iname]
+        row = ref_data[ref_data.Name == iname]
         if row.shape[0] != 1:
             print ("Error: Duplicated or NO row for "+iname)
             break
