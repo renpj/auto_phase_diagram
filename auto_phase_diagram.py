@@ -136,7 +136,7 @@ def get_ref(ref_data,ref_detail,formula):
         print("Error: Pls Check Temperature Input!")
         exit(0)
     elif len(t)==0:
-        ref['T'] = 298.15 # default value for ref['T']
+        ref['T'] = None # default value for ref['T']
     else:
         t = t.iloc[0]
         if type(t) in (np.float64,int,float): # t is a number, type is from pandas
@@ -199,7 +199,7 @@ def get_ref(ref_data,ref_detail,formula):
             p = row['Press']
 
             if p.isnull().iloc[0]:
-                ref['p'][iname] = 0 # unit ln(bar)
+                ref['p'][iname] = None # unit ln(bar)
             else:
                 if type(p.iloc[0]) in (np.float64,int,float):
                     ref['p'][iname] = np.log(p.iloc[0])
@@ -219,7 +219,7 @@ def get_ref(ref_data,ref_detail,formula):
             # get u
             u = row['u']
             if u.isnull().iloc[0]:
-                ref['u'][iname] = 0 # default 0
+                ref['u'][iname] = None # default 0
             else:
                 if  type(u.iloc[0]) in (np.float64,int,float):
                     ref['u'][iname] = u.iloc[0]
@@ -359,39 +359,46 @@ if __name__ == '__main__':
     formula = input_data['Formula_ads'] # formula is pd.Series
     ref,variable =  get_ref(ref_data,ref_detail,formula)
     data = check_data(input_data,ref)
-    # pressure part
-    pf = [new_formula(ref,f,'p') for f in formula] # for pressure
-    u_p = np.array([8.314*ref['T']*eval(ipf)/1000/96.4853 for ipf in pf])
-    # entropy part
-    sf = [new_formula(ref,f,'S') for f in formula] # for entropy
-    u_ts = []
-    for isf in sf:
-        if 'T' in variable:
-            u_ts.append(isf) # return a list of function(just entropy)
-        else:
-            T = ref['T']
-            u_ts.append(-T*eval(isf))
-    u_ts = np.array(u_ts)
-    # enthalpy correction
-    hf = [new_formula(ref,f,'HT') for f in formula] # for HT
-    u_HT = []
-    for ihf in hf:
-        if 'T' in variable:
-            u_HT.append(ihf) # return a list of function
-        else:
-            T = ref['T']
-            u_HT.append(eval(ihf))
-    u_HT = np.array(u_HT)
-    # directly for u
-    uf = [new_formula(ref,f,'u') for f in formula] # for u
-    u = np.array([eval(iuf) for iuf in uf])
+    try:
+        # pressure part
+        pf = [new_formula(ref,f,'p') for f in formula] # for pressure
+        u_p = np.array([8.314*ref['T']*eval(ipf)/1000/96.4853 for ipf in pf])
+        # entropy part
+        sf = [new_formula(ref,f,'S') for f in formula] # for entropy
+        u_ts = []
+        for isf in sf:
+            if 'T' in variable:
+                u_ts.append(isf) # return a list of function(just entropy)
+            else:
+                T = ref['T']
+                u_ts.append(-T*eval(isf))
+        u_ts = np.array(u_ts)
+        # enthalpy correction
+        hf = [new_formula(ref,f,'HT') for f in formula] # for HT
+        u_HT = []
+        for ihf in hf:
+            if 'T' in variable:
+                u_HT.append(ihf) # return a list of function
+            else:
+                T = ref['T']
+                u_HT.append(eval(ihf))
+        u_HT = np.array(u_HT)
+        u = (u_p + u_ts + u_HT)
+    except:
+        try:
+            # directly for u
+            uf = [new_formula(ref,f,'u') for f in formula] # for u
+            u = np.array([eval(iuf) for iuf in uf])
+        except Exception as e:
+            print("Pls provide enough ref data: p, T or u!")
+            print(e)
     nvar = len(variable)
     print("Number of variable is "+str(nvar))
     embed,vdisplay = start_veusz()
     
     if nvar == 0:
         # 这意味着p和T都是一个值, 不做图
-        data['u_ads'] = (u_p + u_ts + u_HT)
+        data['u_ads'] = u
         data['G_ads'] += data['u_ads']*data['Nads']
         data['dG'] -= data['u_ads']*data['Nads']
         data['dG_avg'] = data['dG']/data['Nads'] # 平均吸附能
@@ -412,7 +419,6 @@ if __name__ == '__main__':
             plot_dict['xdata'] = T
             plot_dict['output'] = 'G_'+vk
         elif vk == 'p':
-            u = u_ts + u_p + u_HT
             plot_dict['xlabel'] = 'ln(p('+ vv.keys()[0] + ')/p0)'
             plot_dict['xdata'] = vv.values()[0]
             plot_dict['output'] = 'G_'+vk+'_'+vv.keys()[0]
