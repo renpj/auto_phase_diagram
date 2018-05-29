@@ -103,15 +103,25 @@ def parse_formula(s):
         result.append(var)
     return result
 
-def rebuild_formula(s,map):
+def rebuild_formula(s,mapping):
     '''
     Replace the vars according to map and rebuild the list to new formula string.
-    map = {'old_var':'new_var'}
+    mapping = {'old_var':'new_var'}
     '''
     l = parse_formula(s)
-    nl = [map[il] if il in map else il for il in l]
+    nl = [mapping.pop(il,il) for il in l] # dict.pop is great!
     ns = ''.join(nl)
+    for k in mapping: # for the item not in formula, let them multiply 0
+        ns += '+0*' + mapping[k]
     return ns
+ 
+def new_formula(ref,formula,name):
+    mapping = {}
+    for k in ref[name].keys():
+        mapping[k] = 'ref["'+name+'"]["'+k+'"]'
+        if name in ('S','HT'):
+            mapping[k] += '(T)'
+    return rebuild_formula(formula,mapping)
 
 def get_ref(ref_data,ref_detail,formula):
     '''
@@ -209,7 +219,7 @@ def get_ref(ref_data,ref_detail,formula):
             # get u
             u = row['u']
             if u.isnull().iloc[0]:
-                ref['u'][iname] = None # default None
+                ref['u'][iname] = 0 # default 0
             else:
                 if  type(u.iloc[0]) in (np.float64,int,float):
                     ref['u'][iname] = u.iloc[0]
@@ -227,14 +237,6 @@ def get_ref(ref_data,ref_detail,formula):
                         print(u)
                         break
     return ref,variable
- 
-def new_formula(ref,formula,name):
-    map = {}
-    for k in ref[name].keys():
-        map[k] = 'ref["'+name+'"]["'+k+'"]'
-        if name in ('S','HT'):
-            map[k] += '(T)'
-    return rebuild_formula(formula,map)
 
 def plot_1D(plot_dict):
     """
@@ -261,7 +263,6 @@ def plot_1D(plot_dict):
         veusz_set.append("Set('"+path+"/xData','x')")
         veusz_set.append("SetData('" + name + "', " +str(dG)+")")
         veusz_set.append("Set('"+path+"/yData','"+name+"')")
-        print nads,dG
         ymin.append(min(dG))
         ymax.append(max(dG))
     veusz_set.append("Set('/data/graph1/x/min',"+str(float(min(xdata)))+")")
@@ -422,13 +423,13 @@ if __name__ == '__main__':
         else:
             print('Unsupport variable!')
             exit(0)
-        print u
         ydata = {}
         for irow in range(len(data)):
             nads = int(data.iloc[irow]['Nads'])
+            name = data.iloc[irow]['Name']
             dG = data.iloc[irow]['dG']
             dG -= nads*u[irow]
-            ydata[nads] = dG
+            ydata[name+'_'+str(nads)] = dG
         plot_dict['ydata'] = ydata
         plot_dict['embed'] = embed
         
@@ -441,8 +442,8 @@ if __name__ == '__main__':
         keys = variable.keys()
         if ('T' in keys) and ('p' in keys):
             xlabel = 'T(K)'
-            pk = variable['p'].keys()[0]
-            pv = variable['p'].values()[0]
+            pk = list(variable['p'].keys())[0]
+            pv = list(variable['p'].values())[0]
             ylabel = 'ln(p('+ pk+ ')/p0)'
             xdata = np.linspace(variable['T'][0],variable['T'][1],quality_2d[0])
             ydata = np.linspace(pv[0],pv[1],quality_2d[1])
@@ -457,8 +458,8 @@ if __name__ == '__main__':
             u = u_ts + u_HT + u_p
 
         elif ('p' in keys) and len(set(keys))==1:
-            pk = variable['p'].keys()
-            pv = variable['p'].values()
+            pk = list(variable['p'].keys())
+            pv = list(variable['p'].values())
             xlabel = 'ln(p('+ pk[0] + ')/p0)'
             ylabel = 'ln(p('+ pk[1] + ')/p0)'
             xdata = np.linspace(pv[0][0],pv[0][1],quality_2d[0])
@@ -470,8 +471,8 @@ if __name__ == '__main__':
             u = u_ts + u_HT + u_p
 
         elif ('u' in keys) and len(set(keys))==1:
-            uk = variable['u'].keys()
-            uv = variable['u'].values()
+            uk = list(variable['u'].keys())
+            uv = list(variable['u'].values())
             xlabel = 'u('+ uk[0] + ') (eV)'
             ylabel = 'u('+ uk[1] + ') (eV)'
             xdata = np.linspace(uv[0][0],uv[0][1],quality_2d[0])
