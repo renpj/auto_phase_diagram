@@ -120,7 +120,7 @@ def get_ref(ref_data,ref_detail,formula):
     '''
     variable = {} # if T or p are variables, store them
     ref = {}
-    co_names = set([name for nf in formula for name in parser.expr(nf).compile().co_names])
+    co_names = set([name for name in parser.expr(formula).compile().co_names])
     # get T
     t = ref_data['Temperature']
     t = t[pd.notnull(t)]
@@ -287,9 +287,61 @@ def plot_1D(plot_dict):
         print('Export to '+output_filename+'.jpg')
         embed.Export(output_filename+'.jpg',dpi=300)
 
+def plot_2D(plot_dict):
+    # 生成等值面图
+    ngrid = plot_dict['ngrid']
+    xdata = plot_dict['xdata']
+    ydata = plot_dict['ydata']
+    nmin = plot_dict['nmin']
+    nmax = plot_dict['nmax']
+    xlabel = plot_dict['xlabel']
+    ylabel = plot_dict['ylabel']
+    output_filename = plot_dict['output']
+    embed = plot_dict['embed']
+    print('Generate 2D contour '+output_filename)
+    veusz_set = []
+    veusz_set.append("SetData2D('grid',"
+        +str(ngrid.tolist())
+        +",xcent="
+        +str(xdata.tolist())
+        +",ycent="
+        +str(ydata.tolist())
+        +")")
+    veusz_set.append("Set('/contour/graph1/image1/min',"+str(nmin)+")")
+    veusz_set.append("Set('/contour/graph1/image1/max',"+str(nmax)+")")
+    ncolormap = str(max(nmax-nmin,2))
+    veusz_set.append("Set('/contour/graph1/image1/colorMap', u'blue-darkred-step"+ncolormap+"')")
+    veusz_set.append("Set('/contour/graph1/colorbar1/MajorTicks/number', "+ncolormap+")")
+    level = np.unique(ngrid).tolist()
+    veusz_set.append("Set('/contour/graph1/contour1/manualLevels', "+str(level)+")")
+    xmin = min(xdata)
+    xmax = max(xdata)
+    veusz_set.append("Set('/contour/graph1/x/label','"+ xlabel+"')")
+    veusz_set.append("Set('/contour/graph1/x/min',"+str(float(xmin))+")")
+    veusz_set.append("Set('/contour/graph1/x/max',"+str(float(xmax))+")")
+    ymin = min(ydata)
+    ymax = max(ydata)
+    veusz_set.append("Set('/contour/graph1/y/label','"+ ylabel+"')")
+    veusz_set.append("Set('/contour/graph1/y/min',"+str(float(ymin))+")")
+    veusz_set.append("Set('/contour/graph1/y/max',"+str(float(ymax))+")")
+    veusz_set.append("Remove('/data')")
+    shutil.copy2('template.vsz',output_filename+'.vsz')
+    veusz_file = open(output_filename+'.vsz','a')
+    for i in veusz_set:
+        veusz_file.write(i+'\n')
+    veusz_file.close()
+    # save data to .dat file
+    dim = quality_2d[0]*quality_2d[1]
+    xyz = np.asarray([xgrid.reshape(dim),ygrid.reshape(dim),ngrid.reshape(dim)]).T
+    np.savetxt(output_filename+'.dat',xyz,fmt='%.5f',header=" ".join((xlabel,ylabel,"N")))
+    if embed is not None:
+        embed.Load(output_filename+'.vsz')
+        print('Export to '+output_filename+'.jpg')
+        embed.Export(output_filename+'.jpg',dpi=300)
+        
 if __name__ == '__main__':
     # Constant
-    quality_2d = (500,500) # the quality for 2D contour map
+    quality_2d = (100,100) # the quality for 2D contour map
     
     import sys
     args = sys.argv
@@ -368,164 +420,82 @@ if __name__ == '__main__':
         Three cases: (T,p), (p1,p2), (u1,u2)
         """     
         keys = variable.keys()
-        plot_dict = {}
         if ('T' in keys) and ('p' in keys):
-            plot_dict['xlabel'] = 'T(K)'
+            xlabel = 'T(K)'
             pk = variable['p'].keys()[0]
             pv = variable['p'].values()[0]
+            ylabel = 'ln(p('+ pk+ ')/p0)'
             xdata = np.linspace(variable['T'][0],variable['T'][1],quality_2d[0])
             ydata = np.linspace(pv[0],pv[1],quality_2d[1])
             xgrid,ygrid = np.meshgrid(xdata,ydata)
-            ref['T'] = xgrid
-            ref['p'][pk] = ygrid
+            ref['p'][pk] = ygrid.reshape(quality_2d[0]*quality_2d[1])
+            T = xgrid.reshape(quality_2d[0]*quality_2d[1])
+            S = np.array([map(fs,T) for fs in u_ts]) # too slow
+            u_ts = -(T*S)
+            HT = np.array([map(fh,T) for fh in u_HT]) # too slow
+            u_HT = HT
+            u_p = np.array([8.314*T*eval(ipf)/1000/96.4853 for ipf in pf]) # recalculate u_p, due to T has changed
+            u = u_ts + u_HT + u_p
+
         elif ('p' in keys) and len(set(keys))==1:
             pk = variable['p'].keys()
             pv = variable['p'].values()
-            plot_dict['xlabel'] = 'ln(p('+ pk[0] + ')/p0)'
-            plot_dict['ylabel'] = 'ln(p('+ pk[1] + ')/p0)'
+            xlabel = 'ln(p('+ pk[0] + ')/p0)'
+            ylabel = 'ln(p('+ pk[1] + ')/p0)'
             xdata = np.linspace(pv[0][0],pv[0][1],quality_2d[0])
             ydata = np.linspace(pv[1][0],pv[1][1],quality_2d[1])
             xgrid,ygrid = np.meshgrid(xdata,ydata)
-            ref['p'][pk[0]] = xgrid
-            ref['p'][pk[1]] = ygrid
+            ref['p'][pk[0]] = xgrid.reshape(quality_2d[0]*quality_2d[1])
+            ref['p'][pk[1]] = ygrid.reshape(quality_2d[0]*quality_2d[1])
+            u_p = np.array([8.314*T*eval(ipf)/1000/96.4853 for ipf in pf]) # recalculate u_p, due to T has changed
+            u = u_ts + u_HT + u_p
+
         elif ('u' in keys) and len(set(keys))==1:
             uk = variable['u'].keys()
             uv = variable['u'].values()
-            plot_dict['xlabel'] = 'u('+ uk[0] + ') (eV)'
-            plot_dict['ylabel'] = 'u('+ uk[1] + ') (eV)'
+            xlabel = 'u('+ uk[0] + ') (eV)'
+            ylabel = 'u('+ uk[1] + ') (eV)'
             xdata = np.linspace(uv[0][0],uv[0][1],quality_2d[0])
             ydata = np.linspace(uv[1][0],uv[1][1],quality_2d[1])
             xgrid,ygrid = np.meshgrid(xdata,ydata)
-            ref['u'][uk[0]] = xgrid
-            ref['u'][uk[1]] = ygrid
-        # Get 2D contour data
-        k_notT = [i for i in variable if i!= 'T'] # get var that isnot T
-        ylabel = 'ln(p('+ k_notT[0] + ')/p0)'
-        ydata = np.linspace(variable[k_notT[0]][0],variable[k_notT[0]][1],quality_2d[1])
-        if len(k_notT) == 1:
-            xlabel = 'T(K)'
-            xdata = np.linspace(variable['T'][0],variable['T'][1],quality_2d[0])
-            xgrid,ygrid = np.meshgrid(xdata,ydata)
-            ref['T'] = xgrid
-            ref['p'][k_notT[0]] = ygrid
+            ref['u'][uk[0]] = xgrid.reshape(quality_2d[0]*quality_2d[1])
+            ref['u'][uk[1]] = ygrid.reshape(quality_2d[0]*quality_2d[1])
+            uf = [new_formula(ref,f,'u') for f in formula] # for u
+            u = np.array([eval(iuf) for iuf in uf])
+
         else:
-            xlabel = 'ln(p('+ k_notT[1] + ')/p0)'
-            xdata = np.linspace(variable[k_notT[1]][0],variable[k_notT[1]][1],quality_2d[0])
-            xgrid,ygrid = np.meshgrid(xdata,ydata)
-            ref['p'][k_notT[1]] = xgrid
-            ref['p'][k_notT[0]] = ygrid
-        u_p = 8.314*ref['T']*eval(pf)/1000/96.4853
-        u_ts = -ref['T']*eval(sf)
-        u = u_p + u_ts
+            print("Does not support 2D plot for: "+str(keys))
+            exit(0)
+
+        # Get 2D data
         zgrid = []
-        for nads in range(int(data['Nads'].max())+1): # nads as the index of zgrid,if nads not exists, dG == 0
-            if nads in map(int,data['Nads']):
-                dG = data['dG'][data['Nads']==nads].iloc[0]
-                dG -= nads*u
-                zgrid.append(dG)
-            else:
-                zgrid.append(np.zeros(xgrid.shape))
+        zgrid.append(np.zeros(xgrid.shape)) # all grid should compare to 0!
+        for idx in range(len(data)): # the index of zgrid
+            dG = data['dG'].iloc[idx]
+            nads = data['Nads'].iloc[idx]
+            dG -= nads*u[idx]
+            zgrid.append(dG.reshape(quality_2d))
         zgrid = np.array(zgrid)
         ngrid = zgrid.argmin(0)
-        nmax,nmin = ngrid.max(),ngrid.min()
-        # 生成等值面图
-        print('Generate 2D contour '+'_'.join(variable.keys())+'_2D.vsz')
-        veusz_set = []
-        veusz_set.append("SetData2D('grid',"
-            +str(ngrid.tolist())
-            +",xcent="
-            +str(xdata.tolist())
-            +",ycent="
-            +str(ydata.tolist())
-            +")")
-        veusz_set.append("Set('/contour/graph1/image1/min',"+str(nmin)+")")
-        veusz_set.append("Set('/contour/graph1/image1/max',"+str(nmax)+")")
-        ncolormap = str(max(nmax-nmin,2))
-        veusz_set.append("Set('/contour/graph1/image1/colorMap', u'blue-darkred-step"+ncolormap+"')")
-        veusz_set.append("Set('/contour/graph1/colorbar1/MajorTicks/number', "+ncolormap+")")
-        level = np.unique(ngrid).tolist()
-        veusz_set.append("Set('/contour/graph1/contour1/manualLevels', "+str(level)+")")
-        xmin = min(xdata)
-        xmax = max(xdata)
-        veusz_set.append("Set('/contour/graph1/x/label','"+ xlabel+"')")
-        veusz_set.append("Set('/contour/graph1/x/min',"+str(float(xmin))+")")
-        veusz_set.append("Set('/contour/graph1/x/max',"+str(float(xmax))+")")
-        ymin = min(ydata)
-        ymax = max(ydata)
-        veusz_set.append("Set('/contour/graph1/y/label','"+ ylabel+"')")
-        veusz_set.append("Set('/contour/graph1/y/min',"+str(float(ymin))+")")
-        veusz_set.append("Set('/contour/graph1/y/max',"+str(float(ymax))+")")
-        veusz_set.append("Remove('/data')")
-        output_filename = '_'.join(variable.keys())+'_2D'
-        shutil.copy2('template.vsz',output_filename+'.vsz')
-        veusz_file = open(output_filename+'.vsz','a')
-        for i in veusz_set:
-            veusz_file.write(i+'\n')
-        veusz_file.close()
-        # save data to .dat file
-        dim = quality_2d[0]*quality_2d[1]
-        xyz = np.asarray([xgrid.reshape(dim),ygrid.reshape(dim),ngrid.reshape(dim)]).T
-        np.savetxt(output_filename+'.dat',xyz,fmt='%.5f',header=" ".join((xlabel,ylabel,"N")))
-        if isveusz:
-            embed.Load(output_filename+'.vsz')
-            print('Export to '+output_filename+'.jpg')
-            embed.Export(output_filename+'.jpg',dpi=300)
-            
-        # Plot G_u
-        xdata = np.array([u.min(),u.max()])
-        plot_data = {}
-        for irow in data.index:
-            nads = int(data.iloc[irow]['Nads'])
-            dG = data.iloc[irow]['dG']
-            dG -= nads*xdata
-            plot_data[nads] = dG
-        print('Generate G vs u plot G_u.vsz')
-        xlabel = 'u(eV)'
-        ymin = []
-        ymax = []
-        veusz_set = []
-        veusz_set.append("SetData('x',"+str(xdata.tolist())+")")
-        for nads in plot_data:
-            dG = plot_data[nads].tolist()
-            name = 'G' + str(nads)
-            path = '/data/graph1/' + name
-            veusz_set.append("CloneWidget('/data/graph1/template','/data/graph1','"+name+"')")
-            veusz_set.append("Set('"+path+"/key', 'N="+str(nads)+"')")
-            veusz_set.append("Set('"+path+"/xData','x')")
-            veusz_set.append("SetData('" + name + "', " +str(dG)+")")
-            veusz_set.append("Set('"+path+"/yData','"+name+"')")
-            ymin.append(min(dG))
-            ymax.append(max(dG))
-        xmin,xmax = xdata
-        veusz_set.append("Set('/data/graph1/x/min',"+str(float(min(xdata)))+")")
-        veusz_set.append("Set('/data/graph1/x/max',"+str(float(max(xdata)))+")")
-        ymin = min(ymin)
-        ymax = max(ymax)
-        veusz_set.append("Set('/data/graph1/y/min',"+str(float(ymin-(ymax-ymin)*0.2))+")")
-        veusz_set.append("Set('/data/graph1/y/max',"+str(float(ymax+(ymax-ymin)*0.2))+")")
-        veusz_set.append("Remove('/data/graph1/template')")
-        veusz_set.append("Remove('/contour')")
-        # save to vsz
-        output_filename = 'G_u'
-        shutil.copy2('template.vsz',output_filename+'.vsz')
-        veusz_file = open(output_filename+'.vsz','a')
-        for  i in veusz_set:
-            veusz_file.write(i+'\n')
-        veusz_file.close()
-        # save data to .dat file
-        print('Save data to '+output_filename+'.csv')
-        plot_data[xlabel] = xdata 
-        plot_df = pd.DataFrame(plot_data)
-        plot_df.set_index(xlabel,inplace=True)
-        plot_df.to_csv(output_filename+'.csv',index=True,float_format='%5.3f')
-        if isveusz:
-            embed.Load(output_filename+'.vsz')
-            print('Export to '+output_filename+'.jpg')
-            embed.Export(output_filename+'.jpg',dpi=300)
+        nmax,nmin = len(data)+1,0
+        plot_dict = {
+            'ngrid':ngrid,
+            'xdata':xdata,
+            'ydata':ydata,
+            'nmin':nmin,
+            'nmax':nmax,
+            'xlabel':xlabel,
+            'ylabel':ylabel,
+            'output':'_'.join(keys)+'_2D',
+            'embed':embed,
+        }
+        plot_2D(plot_dict)
+
     else:
         print("Number of variables must less than 2!")
         exit(0)
+
     print('Save data to excel file G_result.xslx')
-    data = data[['Nads','E_slab','ZPE_slab','E_ads','ZPE_ads','E_total','ZPE_total','dG','dG_avg','dG_step']]
+    data = data[['Name','Nads','Formula_ads','E_slab','ZPE_slab','E_ads','dZPE_ads','E_total','ZPE_total','dG','dG_avg','dG_step']]
     data.to_excel('G_result.xlsx',float_format='%.4f',index=False)
 #    close_veusz(embed,vdisplay)
