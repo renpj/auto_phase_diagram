@@ -109,18 +109,16 @@ def rebuild_formula(s,map):
     map = {'old_var':'new_var'}
     '''
     l = parse_formula(s)
-    for k,v in map.items():
-        nl = [v if il==k else il for il in l]
+    nl = [map[il] if il in map else il for il in l]
     ns = ''.join(nl)
     return ns
 
 def get_ref(ref_data,ref_detail,formula):
     '''
-    ref_data is pandas.DataFrame, formula is string.
+    ref_data is pandas.DataFrame, formula is pandas.Series.
     '''
     variable = {} # if T or p are variables, store them
     ref = {}
-    co_names = set([name for name in parser.expr(formula).compile().co_names])
     # get T
     t = ref_data['Temperature']
     t = t[pd.notnull(t)]
@@ -150,86 +148,91 @@ def get_ref(ref_data,ref_detail,formula):
     ref['E'] = {}
     ref['dZPE'] = {}
     ref['u'] = {}
-    for iname in co_names:
-        # assign HT,E,dZPE,u,S
-        row = ref_data[ref_data.Name == iname]
-        if row.shape[0] != 1:
-            print ("Error: Duplicated or NO row for "+iname)
-            break
-        
-        for r in ('E','dZPE',):
-            rd = row[r]
-            if rd.isnull().iloc[0]:
-                print ("Error: NO E or dZPE for "+iname)
+    for nf in formula:
+        co_names = set([name for name in parser.expr(nf).compile().co_names])
+        for iname in co_names:
+            # assign HT,E,dZPE,u,S
+            row = ref_data[ref_data.Name == iname]
+            if row.shape[0] != 1:
+                print ("Error: Duplicated or NO row for "+iname)
                 break
-            else:
-                ref[r][iname] = rd.iloc[0]
-        
-        for r in ('S','HT',):
-            rd = row[r]
-            if rd.notnull().iloc[0]:
-                c = str(rd.iloc[0])
-                ref[r][iname] = lambda x:eval(c) # 形式一致性
-            else:
-                if iname in ref_detail: # use S(T) and H(T)
-                    v = ref_detail[iname]
-                    if r in v.columns:
-                        if np.all(pd.notnull(v[r])):
-                            ref[r][iname] = lambda x: np.interp(x,v['T'],v[r])
-                        else:
-                            print("Error: pls check ref_"+iname)
-                            break
-                    else:
-                        ref[r][iname] = lambda x: 0.0
-                else:
-                    print ("Error: No "+r+" vaule for "+iname)
-                    break
             
-        # assign pressure
-        p = row['Press']
+            for r in ('E','dZPE',):
+                rd = row[r]
+                if rd.isnull().iloc[0]:
+                    print ("Error: NO E or dZPE for "+iname)
+                    break
+                else:
+                    ref[r][iname] = rd.iloc[0]
+            
+            for r in ('S','HT',):
+                rd = row[r]
+                if rd.notnull().iloc[0]:
+                    c = str(rd.iloc[0])
+                    ref[r][iname] = lambda x:eval(c) # 形式一致性
+                else:
+                    if iname in ref_detail: # use S(T) and H(T)
+                        v = ref_detail[iname]
+                        if r in v.columns:
+                            if np.all(pd.notnull(v[r])):
+                                ref[r][iname] = lambda x: np.interp(x,v['T'],v[r])
+                            else:
+                                print("Error: pls check ref_"+iname)
+                                break
+                        else:
+                            ref[r][iname] = lambda x: 0.0
+                    else:
+                        print ("Error: No "+r+" vaule for "+iname)
+                        break
+                
+            # assign pressure
+            p = row['Press']
 
-        if p.isnull().iloc[0]:
-            ref['p'][iname] = 0 # unit ln(bar)
-        else:
-            if type(p.iloc[0]) == type(np.float64(0)):
-                ref['p'][iname] = np.log(p.iloc[0])
+            if p.isnull().iloc[0]:
+                ref['p'][iname] = 0 # unit ln(bar)
             else:
-                try:
-                    ref['p'][iname] = np.array(np.log(eval(p.iloc[0]))) # ln(p)
-                    if ref['p'][iname][0] != ref['p'][iname][1]:
-                        if 'p' not in variable:
-                            variable['p'] = {} 
-                        variable['p'][iname] = ref['p'][iname]
-                    else:
-                        ref['p'][iname] = ref['p'][iname][0]
-                except Exception as e:
-                    print("Error: Please check the Press format!",e)
-                    break
-        # get u
-        u = row['u']
-        if u.isnull().iloc[0]:
-            ref['u'][iname] = None 
-        else:
-            if type(u.iloc[0]) == type(np.float64(0)):
-                ref['u'][iname] = u.iloc[0]
+                if type(p.iloc[0]) in (np.float64,int,float):
+                    ref['p'][iname] = np.log(p.iloc[0])
+                else:
+                    try:
+                        ref['p'][iname] = np.array(np.log(eval(p.iloc[0]))) # ln(p)
+                        if ref['p'][iname][0] != ref['p'][iname][1]:
+                            if 'p' not in variable:
+                                variable['p'] = {} 
+                            variable['p'][iname] = ref['p'][iname]
+                        else:
+                            ref['p'][iname] = ref['p'][iname][0]
+                    except Exception as e:
+                        print("Error: Please check the Press format!")
+                        print(e)
+                        break
+            # get u
+            u = row['u']
+            if u.isnull().iloc[0]:
+                ref['u'][iname] = None 
             else:
-                try:
-                    ref['u'][iname] = np.array(np.log(eval(u.iloc[0]))) # ln(p)
-                    if ref['u'][iname][0] != ref['u'][iname][1]:
-                        if 'u' not in variable:
-                            variable['u'] = {}                         
-                        variable['u'][iname] = ref['u'][iname]
-                    else:
-                        ref['p']['u'][iname] = ref['u'][iname][0]
-                except Exception as e:
-                    print("Error: Please check the u format!",e)
-                    break
+                if type(u.iloc[0]) == type(np.float64(0)):
+                    ref['u'][iname] = u.iloc[0]
+                else:
+                    try:
+                        ref['u'][iname] = np.array(np.log(eval(u.iloc[0]))) # ln(p)
+                        if ref['u'][iname][0] != ref['u'][iname][1]:
+                            if 'u' not in variable:
+                                variable['u'] = {}                         
+                            variable['u'][iname] = ref['u'][iname]
+                        else:
+                            ref['p']['u'][iname] = ref['u'][iname][0]
+                    except Exception as e:
+                        print("Error: Please check the u format!",e)
+                        break
     return ref,variable
  
 def new_formula(ref,formula,name):
     map = {}
     for k in ref[name].keys():
         map[k] = 'ref["'+name+'"]["'+k+'"]'
+        if name in ('S','HT'):
+            map[k] += '(T)'
     return rebuild_formula(formula,map)
 
 def plot_1D(plot_dict):
@@ -351,29 +354,28 @@ if __name__ == '__main__':
     filename = args[1]
     input_data,ref_data,ref_detail = data_from_xls(filename)
     formula = input_data['Formula_ads'] # formula is pd.Series
-    ref,variable = {},{}
-    for nf in formula:
-        iref,iv = get_ref(ref_data,ref_detail,nf)
-        ref.update(iref)
-        variable.update(iv)
+    ref,variable =  get_ref(ref_data,ref_detail,formula)
     data = check_data(input_data,ref)
     pf = [new_formula(ref,f,'p') for f in formula] # for pressure
     sf = [new_formula(ref,f,'S') for f in formula] # for entropy
     hf = [new_formula(ref,f,'HT') for f in formula] # for HT
     u_p = np.array([8.314*ref['T']*eval(ipf)/1000/96.4853 for ipf in pf])
     u_ts = []
+    print sf
     for isf in sf:
         if 'T' in variable:
-            u_ts.append(eval(isf)) # return a list of function(just entropy)
+            u_ts.append(isf) # return a list of function(just entropy)
         else:
-            u_ts.append(-ref['T']*eval(isf)(ref['T']))
+            T = ref['T']
+            u_ts.append(-T*eval(isf))
     u_ts = np.array(u_ts)
     u_HT = []
     for ihf in hf:
         if 'T' in variable:
-            u_HT.append(eval(ihf)) # return a list of function
+            u_HT.append(ihf) # return a list of function
         else:
-            u_HT.append(eval(ihf)(ref['T']))
+            T = ref['T']
+            u_HT.append(eval(ihf))
     u_HT = np.array(u_HT)
     nvar = len(variable)
     print("Number of variable is "+str(nvar))
@@ -392,13 +394,13 @@ if __name__ == '__main__':
         vk,vv = list(variable.items())[0]       
         if vk == 'T':
             plot_dict['xlabel'] = 'Temperature (K)'
-            T = np.linspace(vv[0],vv[1],quality_2d[0])
-            S = np.array([[fs(it) for it in T] for fs in u_ts])
-            u_ts = -(T*S)
-            HT = np.array([[fh(it) for it in T] for fh in u_HT])
+            Tlist = np.linspace(vv[0],vv[1],quality_2d[0])
+            S = np.array([[eval(fs) for T in Tlist] for fs in u_ts])
+            u_ts = -(Tlist*S)
+            HT = np.array([[eval(fh) for T in Tlist] for fh in u_HT])
             u_HT = HT
-            u_p = np.array([8.314*T*eval(ipf)/1000/96.4853 for ipf in pf]) # recalculate u_p, due to T has changed
-            plot_dict['xdata'] = T
+            u_p = np.array([8.314*Tlist*eval(ipf)/1000/96.4853 for ipf in pf]) # recalculate u_p, due to T has changed
+            plot_dict['xdata'] = Tlist
             plot_dict['output'] = 'G_'+vk
         else:
             plot_dict['xlabel'] = 'ln(p('+ vv.keys()[0] + ')/p0)'
@@ -429,12 +431,12 @@ if __name__ == '__main__':
             ydata = np.linspace(pv[0],pv[1],quality_2d[1])
             xgrid,ygrid = np.meshgrid(xdata,ydata)
             ref['p'][pk] = ygrid.reshape(quality_2d[0]*quality_2d[1])
-            T = xgrid.reshape(quality_2d[0]*quality_2d[1])
-            S = np.array([map(fs,T) for fs in u_ts]) # too slow
-            u_ts = -(T*S)
-            HT = np.array([map(fh,T) for fh in u_HT]) # too slow
+            Tlist = xgrid.reshape(quality_2d[0]*quality_2d[1])
+            S = np.array([[eval(fs) for T in Tlist] for fs in u_ts]) # too slow
+            u_ts = -(Tlist*S)
+            HT = np.array([[eval(fh) for T in Tlist] for fh in u_HT]) # too slow
             u_HT = HT
-            u_p = np.array([8.314*T*eval(ipf)/1000/96.4853 for ipf in pf]) # recalculate u_p, due to T has changed
+            u_p = np.array([8.314*Tlist*eval(ipf)/1000/96.4853 for ipf in pf]) # recalculate u_p, due to T has changed
             u = u_ts + u_HT + u_p
 
         elif ('p' in keys) and len(set(keys))==1:
