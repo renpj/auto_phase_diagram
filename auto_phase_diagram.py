@@ -169,18 +169,18 @@ def get_ref(ref_data,ref_detail,formula):
                 rd = row[r]
                 if rd.notnull().iloc[0]:
                     c = str(rd.iloc[0])
-                    ref[r][iname] = lambda x:eval(c) # 形式一致性
+                    ref[r][iname] = lambda x:np.ones(len(x))*eval(c) if hasattr(x,'__getitem__') else eval(c)  # 形式一致性
                 else:
                     if iname in ref_detail: # use S(T) and H(T)
                         v = ref_detail[iname]
                         if r in v.columns:
                             if np.all(pd.notnull(v[r])):
-                                ref[r][iname] = lambda x: np.interp(x,v['T'],v[r])
+                                ref[r][iname] = lambda x: np.interp(x,v['T'],v[r]) # 形式一致性
                             else:
                                 print("Error: pls check ref_"+iname)
                                 break
                         else:
-                            ref[r][iname] = lambda x: 0.0
+                            ref[r][iname] = lambda x: np.zeros(len(x)) if hasattr(x,'__getitem__') else 0.0   # 形式一致性
                     else:
                         print ("Error: No "+r+" vaule for "+iname)
                         break
@@ -344,7 +344,7 @@ def plot_2D(plot_dict):
         
 if __name__ == '__main__':
     # Constant
-    quality_2d = (100,100) # the quality for 2D contour map
+    quality_2d = (500,500) # the quality for 2D contour map
     
     import sys
     args = sys.argv
@@ -394,13 +394,13 @@ if __name__ == '__main__':
         vk,vv = list(variable.items())[0]       
         if vk == 'T':
             plot_dict['xlabel'] = 'Temperature (K)'
-            Tlist = np.linspace(vv[0],vv[1],quality_2d[0])
-            S = np.array([[eval(fs) for T in Tlist] for fs in u_ts])
-            u_ts = -(Tlist*S)
-            HT = np.array([[eval(fh) for T in Tlist] for fh in u_HT])
+            T = np.linspace(vv[0],vv[1],quality_2d[0])
+            S = np.array([eval(fs) for fs in u_ts])
+            u_ts = -(T*S)
+            HT = np.array([eval(fh) for fh in u_HT])
             u_HT = HT
-            u_p = np.array([8.314*Tlist*eval(ipf)/1000/96.4853 for ipf in pf]) # recalculate u_p, due to T has changed
-            plot_dict['xdata'] = Tlist
+            u_p = np.array([8.314*T*eval(ipf)/1000/96.4853 for ipf in pf]) # recalculate u_p, due to T has changed
+            plot_dict['xdata'] = T
             plot_dict['output'] = 'G_'+vk
         else:
             plot_dict['xlabel'] = 'ln(p('+ vv.keys()[0] + ')/p0)'
@@ -431,12 +431,12 @@ if __name__ == '__main__':
             ydata = np.linspace(pv[0],pv[1],quality_2d[1])
             xgrid,ygrid = np.meshgrid(xdata,ydata)
             ref['p'][pk] = ygrid.reshape(quality_2d[0]*quality_2d[1])
-            Tlist = xgrid.reshape(quality_2d[0]*quality_2d[1])
-            S = np.array([[eval(fs) for T in Tlist] for fs in u_ts]) # too slow
-            u_ts = -(Tlist*S)
-            HT = np.array([[eval(fh) for T in Tlist] for fh in u_HT]) # too slow
+            T = xgrid.reshape(quality_2d[0]*quality_2d[1])
+            S = np.array([eval(fs) for fs in u_ts]) # too slow
+            u_ts = -(T*S)
+            HT = np.array([eval(fh) for fh in u_HT]) # too slow
             u_HT = HT
-            u_p = np.array([8.314*Tlist*eval(ipf)/1000/96.4853 for ipf in pf]) # recalculate u_p, due to T has changed
+            u_p = np.array([8.314*T*eval(ipf)/1000/96.4853 for ipf in pf]) # recalculate u_p, due to T has changed
             u = u_ts + u_HT + u_p
 
         elif ('p' in keys) and len(set(keys))==1:
