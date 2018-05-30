@@ -30,7 +30,7 @@ def close_veusz(embed,vdisplay):
 
 def data_from_xls(filename):    
     print('Reading input excel file ...')
-    allsheet = pd.read_excel(filename,sheetname=None)
+    allsheet = pd.read_excel(filename,sheet_name=None)
     input_data = allsheet['data']
     ref_data = allsheet['ref']
     ref_detail = {}
@@ -179,7 +179,7 @@ def get_ref(ref_data,ref_detail,formula):
                 rd = row[r]
                 if rd.notnull().iloc[0]:
                     c = str(rd.iloc[0])
-                    ref[r][iname] = lambda x:np.ones(len(x))*eval(c) if hasattr(x,'__getitem__') else eval(c)  # 形式一致性
+                    ref[r][iname] = lambda x:np.ones(len(x))*eval(c) if hasattr(x,'__iter__') else eval(c)  # 形式一致性
                 else:
                     if iname in ref_detail: # use S(T) and H(T)
                         v = ref_detail[iname]
@@ -190,7 +190,7 @@ def get_ref(ref_data,ref_detail,formula):
                                 print("Error: pls check ref_"+iname)
                                 break
                         else:
-                            ref[r][iname] = lambda x: np.zeros(len(x)) if hasattr(x,'__getitem__') else 0.0   # 形式一致性
+                            ref[r][iname] = lambda x: np.zeros(len(x)) if hasattr(x,'__iter__') else 0.0   # 形式一致性
                     else:
                         print ("Error: No "+r+" vaule for "+iname)
                         break
@@ -383,17 +383,24 @@ if __name__ == '__main__':
                 T = ref['T']
                 u_HT.append(eval(ihf))
         u_HT = np.array(u_HT)
-        u = (u_p + u_ts + u_HT)
-    except:
+        u = np.array([u_p[i]+u_ts[i]+u_HT[i] for i in range(len(u_ts))]) # cannot add them directly!
+    except Exception as e1:
+        print(e1)
+        print("Use u directly.")
         try:
             # directly for u
             uf = [new_formula(ref,f,'u') for f in formula] # for u
             u = np.array([eval(iuf) for iuf in uf])
-        except Exception as e:
+        except Exception as e2:
             print("Pls provide enough ref data: p, T or u!")
-            print(e)
+            print(e2)
     nvar = len(variable)
+    if nvar == 1:
+        k = list(variable)[0]
+        if k in ('p','u'):
+            nvar = len(variable[k])
     print("Number of variable is "+str(nvar))
+    print variable
     embed,vdisplay = start_veusz()
     
     if nvar == 0:
@@ -461,9 +468,10 @@ if __name__ == '__main__':
             HT = np.array([eval(fh) for fh in u_HT]) # too slow
             u_HT = HT
             u_p = np.array([8.314*T*eval(ipf)/1000/96.4853 for ipf in pf]) # recalculate u_p, due to T has changed
+            #print u_ts.shape,u_HT.shape,u_p.shape
             u = u_ts + u_HT + u_p
-
-        elif ('p' in keys) and len(set(keys))==1:
+            output = "_".join(['T','p',pk,'2D'])
+        elif ('p' in keys) and len(keys)==1:
             pk = list(variable['p'].keys())
             pv = list(variable['p'].values())
             xlabel = 'ln(p('+ pk[0] + ')/p0)'
@@ -474,9 +482,10 @@ if __name__ == '__main__':
             ref['p'][pk[0]] = xgrid.reshape(quality_2d[0]*quality_2d[1])
             ref['p'][pk[1]] = ygrid.reshape(quality_2d[0]*quality_2d[1])
             u_p = np.array([8.314*T*eval(ipf)/1000/96.4853 for ipf in pf]) # recalculate u_p, due to T has changed
-            u = u_ts + u_HT + u_p
-
-        elif ('u' in keys) and len(set(keys))==1:
+            #print u_ts.shape,u_HT.shape,u_p.shape
+            u = (u_ts + u_HT + u_p.T).T
+            output = "_".join(['p',pk[0],'p',pk[1],'2D'])
+        elif ('u' in keys) and len(keys)==1:
             uk = list(variable['u'].keys())
             uv = list(variable['u'].values())
             xlabel = 'u('+ uk[0] + ') (eV)'
@@ -487,7 +496,7 @@ if __name__ == '__main__':
             ref['u'][uk[0]] = xgrid.reshape(quality_2d[0]*quality_2d[1])
             ref['u'][uk[1]] = ygrid.reshape(quality_2d[0]*quality_2d[1])
             u = np.array([eval(iuf) for iuf in uf])
-
+            output = "_".join(['u',uk[0],'u',uk[1],'2D'])
         else:
             print("Unsupport 2D plot for: "+str(keys))
             exit(0)
@@ -511,7 +520,7 @@ if __name__ == '__main__':
             'nmax':nmax,
             'xlabel':xlabel,
             'ylabel':ylabel,
-            'output':'_'.join(keys)+'_2D',
+            'output':output,
             'embed':embed,
         }
         plot_2D(plot_dict)
