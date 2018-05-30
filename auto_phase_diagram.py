@@ -39,35 +39,26 @@ def data_from_xls(filename):
             name = s[4:]
             ref_detail[name] = allsheet[s]
     print('Initialize data ...')
-    data = input_data.dropna(subset=['Nads','E_total']) # remove rows that are NaN for Nads and E_total
+    data = input_data.dropna(subset=['Nads','E_Total']) # remove rows that are NaN for Nads and E_Total
     data = data.dropna(axis=0,how='all')
     return data,ref_data,ref_detail
     
 def check_data(data,ref):
     # data is a pandas.DataFrame
-    require_col = set((u'Nads', u'E_slab', u'E_total','Formula_ads'))
+    require_col = set((u'Nads', u'E_Slab', u'E_Total','Formula'))
     if not require_col.issubset(set(data.columns)):
         print('Error: Required Columns are ', ', '.join(require_col))
 
-    for icol in ('Name','E_slab','ZPE_slab','ZPE_total','Formula_ads'): # fill NaN with i[0], else 0
+    for icol in ('Name','E_Slab','ZPE_Slab','ZPE_Total','Formula'): # fill NaN with i[0], else 0
         v = data[icol][0]
         if pd.isnull(data[icol][0]):
             v = 0
         data[icol] = data[icol].fillna(v)
             
-    for icol in ('dZPE','E'):
-        e_ads = [eval(new_formula(ref,f,icol)) for f in data['Formula_ads']]
-        data[icol+'_ads'] = e_ads
-
     data = data.groupby(by=['Name','Nads'],as_index=False).agg(min) # 聚合相同的Nads, 取最小值。注意，没有作为新的index。
 
-    data['G_slab'] = data['E_slab'] + data['ZPE_slab']
-    data['G_total'] = data['E_total'] + data['ZPE_total']
-    data['G_ads'] = (data['E_ads'] + data['dZPE_ads'])*data['Nads']
-
-    data['dG'] = data['G_total'] - data['G_slab'] - data['G_ads']
-    data['dG_avg'] = data['dG']/data['Nads'] # 平均吸附能
-    data['dG_step'] = data['dG']- data['dG'].shift().fillna(0)  # 分布吸附能
+    data['G_Slab'] = data['E_Slab'] + data['ZPE_Slab']
+    data['G_Total'] = data['E_Total'] + data['ZPE_Total']
     
     return data
 
@@ -136,7 +127,7 @@ def get_ref(ref_data,ref_detail,formula):
         print("Error: Pls Check Temperature Input!")
         exit(0)
     elif len(t)==0:
-        ref['T'] = None # default value for ref['T']
+        ref['T'] = 0 # default value for ref['T']
     else:
         t = t.iloc[0]
         if type(t) in (np.float64,int,float): # t is a number, type is from pandas
@@ -159,7 +150,7 @@ def get_ref(ref_data,ref_detail,formula):
     ref['dZPE'] = {}
     ref['u'] = {}
     for nf in formula:
-        co_names = set([name for name in parser.expr(nf).compile().co_names])
+        co_names = set([name for name in parser.expr(nf).compile().co_names])-set(('Total','Slab','Nads'))
         for iname in co_names:
             # assign HT,E,dZPE,u,S
             row = ref_data[ref_data.Name == iname]
@@ -256,10 +247,10 @@ def plot_1D(plot_dict):
     ymax = []
     for nads in ydata:
         dG = ydata[nads].tolist()
-        name = 'G' + str(nads)
+        name = 'G' + nads
         path = '/data/graph1/' + name
         veusz_set.append("CloneWidget('/data/graph1/template','/data/graph1','"+name+"')")
-        veusz_set.append("Set('"+path+"/key', 'N="+str(nads)+"')")
+        veusz_set.append("Set('"+path+"/key', '"+nads+"')")
         veusz_set.append("Set('"+path+"/xData','x')")
         veusz_set.append("SetData('" + name + "', " +str(dG)+")")
         veusz_set.append("Set('"+path+"/yData','"+name+"')")
@@ -356,98 +347,71 @@ if __name__ == '__main__':
         exit(0)
     filename = args[1]
     input_data,ref_data,ref_detail = data_from_xls(filename)
-    formula = input_data['Formula_ads'] # formula is pd.Series
+    formula = input_data['Formula'] # formula is pd.Series
     ref,variable =  get_ref(ref_data,ref_detail,formula)
     data = check_data(input_data,ref)
-    try:
-        # pressure part
-        pf = [new_formula(ref,f,'p') for f in formula] # for pressure
-        u_p = np.array([8.314*ref['T']*eval(ipf)/1000/96.4853 for ipf in pf])
-        # entropy part
-        sf = [new_formula(ref,f,'S') for f in formula] # for entropy
-        hf = [new_formula(ref,f,'HT') for f in formula] # for HT
-        u_ts = []
-        u_HT = []
-        for i in range(len(sf)):
-            isf = sf[i]
-            ihf = hf[i]
-            if 'T' in variable:
-                u_ts.append(isf) # return a list of function(just entropy)
-                u_HT.append(ihf) # return a list of function
-            else:
-                T = ref['T']
-                u_ts.append(-T*eval(isf))
-                u_HT.append(eval(ihf))
-        u_ts = np.array(u_ts)
-        u_HT = np.array(u_HT)
-        if 'T' in variable:
-            u = None # not required
-        else:
-            u = np.array([u_p[i]+u_ts[i]+u_HT[i] for i in range(len(u_ts))]) # cannot add them directly!
-    except Exception as e1:
-        print(e1)
-        print("Use u directly.")
-        try:
-            # directly for u
-            uf = [new_formula(ref,f,'u') for f in formula] # for u
-            u = np.array([eval(iuf) for iuf in uf])
-        except Exception as e2:
-            print("Error: Pls provide enough ref data: p, T or u!")
-            print(e2)
-            exit(0)
     nvar = len(variable)
     if nvar == 1:
         k = list(variable)[0]
         if k in ('p','u'):
             nvar = len(variable[k])
     print("Number of variable is "+str(nvar))
-    print variable
-    embed,vdisplay = start_veusz()
+    if nvar > 0:
+        print(variable)
+        embed,vdisplay = start_veusz()
     
-    if nvar == 0:
-        # 这意味着p和T都是一个值, 不做图
-        data['u_ads'] = u
-        data['G_ads'] += data['u_ads']*data['Nads']
-        data['dG'] -= data['u_ads']*data['Nads']
-        data['dG_avg'] = data['dG']/data['Nads'] # 平均吸附能
-        data['dG_step'] = data['dG']- data['dG'].shift().fillna(0)  # 分布吸附能
+    # get u for all ref
+    for name in ref['u']:
+        T = ref['T']
+        try:
+            # get u directly
+            print("Try to use u for "+name+" directly...")
+            ref['u'][name] = ref['u'][name]+ref['E'][name]+ref['dZPE'][name]+ref['HT'][name](T)
+            print("Done!")
+        except Exception as e1:
+            print(e1)
+            # get u from T and p
+            print("Try to get u from T and p ...")
+            try:
+                ref['u'][name] = ref['E'][name]
+                ref['u'][name] += ref['dZPE'][name]
+                ref['u'][name] += ref['HT'][name](T)
+                ref['u'][name] += 8.314*T*ref['p'][name]/1000/96.4853 
+                ref['u'][name] -= T*ref['S'][name](T) 
+                print("Done!")
+            except Exception as e2:
+                print(e2)
+                print("Error: Pls provide enough ref data: p, T or u!")
+                print(ref)
+                exit(0)
 
-    elif nvar == 1:
-        plot_dict = {}
+    if nvar == 1:
         vk,vv = list(variable.items())[0]       
         if vk == 'T':
-            plot_dict['xlabel'] = 'Temperature (K)'
             T = np.linspace(vv[0],vv[1],quality_2d[0])
-            S = np.array([eval(fs) for fs in u_ts])
-            u_ts = -(T*S)
-            HT = np.array([eval(fh) for fh in u_HT])
-            u_HT = HT
-            u_p = np.array([8.314*T*eval(ipf)/1000/96.4853 for ipf in pf]) # recalculate u_p, due to T has changed
-            u = u_ts + u_p + u_HT
-            plot_dict['xdata'] = T
-            plot_dict['output'] = 'G_'+vk
+            xdata = T
+            output = 'G_'+vk
+            xlabel = 'Temperature (K)'
+            # recalculate u for new T
+            for name in ref['u']:
+                ref['u'][name] = ref['E'][name]
+                ref['u'][name] += ref['dZPE'][name]
+                ref['u'][name] += ref['HT'][name](T)
+                ref['u'][name] += 8.314*T*ref['p'][name]/1000/96.4853 
+                ref['u'][name] -= T*ref['S'][name](T) 
         elif vk == 'p':
-            plot_dict['xlabel'] = 'ln(p('+ vv.keys()[0] + ')/p0)'
-            plot_dict['xdata'] = vv.values()[0]
-            plot_dict['output'] = 'G_'+vk+'_'+vv.keys()[0]
+            xlabel = 'ln(p('+ vv.keys()[0] + ')/p0)'
+            xdata = vv.values()[0]
+            output = 'G_'+vk+'_'+vv.keys()[0]
+            # no required for recalculate u
         elif vk == 'u':
-            plot_dict['xlabel'] = 'u('+ vv.keys()[0] + ') (eV)'
-            plot_dict['xdata'] = vv.values()[0]
-            plot_dict['output'] = 'G_'+vk+'_'+vv.keys()[0]
+            xlabel = 'u('+ vv.keys()[0] + ') (eV)'
+            xdata = vv.values()[0]
+            output = 'G_'+vk+'_'+vv.keys()[0]
+            # no required for recalculate u
         else:
             print('Unsupport variable!')
             exit(0)
-        ydata = {}
-        for irow in range(len(data)):
-            nads = int(data.iloc[irow]['Nads'])
-            name = data.iloc[irow]['Name']
-            dG = data.iloc[irow]['dG']
-            dG -= nads*u[irow]
-            ydata[name+'_'+str(nads)] = dG
-        plot_dict['ydata'] = ydata
-        plot_dict['embed'] = embed
-        
-        plot_1D(plot_dict)
 
     elif nvar == 2:      
         """
@@ -459,57 +423,101 @@ if __name__ == '__main__':
             pk = list(variable['p'].keys())[0]
             pv = list(variable['p'].values())[0]
             ylabel = 'ln(p('+ pk+ ')/p0)'
+            output = "_".join(['T','p',pk,'2D'])
             xdata = np.linspace(variable['T'][0],variable['T'][1],quality_2d[0])
             ydata = np.linspace(pv[0],pv[1],quality_2d[1])
             xgrid,ygrid = np.meshgrid(xdata,ydata)
             ref['p'][pk] = ygrid.reshape(quality_2d[0]*quality_2d[1])
             T = xgrid.reshape(quality_2d[0]*quality_2d[1])
-            S = np.array([eval(fs) for fs in u_ts]) # too slow
-            u_ts = -(T*S)
-            HT = np.array([eval(fh) for fh in u_HT]) # too slow
-            u_HT = HT
-            u_p = np.array([8.314*T*eval(ipf)/1000/96.4853 for ipf in pf]) # recalculate u_p, due to T has changed
-            #print u_ts.shape,u_HT.shape,u_p.shape
-            u = u_ts + u_HT + u_p
-            output = "_".join(['T','p',pk,'2D'])
+            # recalculate u for new T
+            for name in ref['u']:
+                ref['u'][name] = ref['E'][name]
+                ref['u'][name] += ref['dZPE'][name]
+                ref['u'][name] += ref['HT'][name](T)
+                ref['u'][name] += 8.314*T*ref['p'][name]/1000/96.4853 
+                ref['u'][name] -= T*ref['S'][name](T) 
         elif ('p' in keys) and len(keys)==1:
             pk = list(variable['p'].keys())
             pv = list(variable['p'].values())
             xlabel = 'ln(p('+ pk[0] + ')/p0)'
             ylabel = 'ln(p('+ pk[1] + ')/p0)'
+            output = "_".join(['p',pk[0],'p',pk[1],'2D'])
             xdata = np.linspace(pv[0][0],pv[0][1],quality_2d[0])
             ydata = np.linspace(pv[1][0],pv[1][1],quality_2d[1])
             xgrid,ygrid = np.meshgrid(xdata,ydata)
             ref['p'][pk[0]] = xgrid.reshape(quality_2d[0]*quality_2d[1])
             ref['p'][pk[1]] = ygrid.reshape(quality_2d[0]*quality_2d[1])
-            u_p = np.array([8.314*T*eval(ipf)/1000/96.4853 for ipf in pf]) # recalculate u_p, due to T has changed
-            #print u_ts.shape,u_HT.shape,u_p.shape
-            u = (u_ts + u_HT + u_p.T).T
-            output = "_".join(['p',pk[0],'p',pk[1],'2D'])
+            # recalculate u for new p
+            T = ref['T']
+            for name in pk: # not for all u
+                ref['u'][name] = ref['E'][name]
+                ref['u'][name] += ref['dZPE'][name]
+                ref['u'][name] += ref['HT'][name](T)
+                ref['u'][name] += 8.314*T*ref['p'][name]/1000/96.4853 
+                ref['u'][name] -= T*ref['S'][name](T) 
         elif ('u' in keys) and len(keys)==1:
             uk = list(variable['u'].keys())
             uv = list(variable['u'].values())
             xlabel = 'u('+ uk[0] + ') (eV)'
             ylabel = 'u('+ uk[1] + ') (eV)'
+            output = "_".join(['u',uk[0],'u',uk[1],'2D'])
             xdata = np.linspace(uv[0][0],uv[0][1],quality_2d[0])
             ydata = np.linspace(uv[1][0],uv[1][1],quality_2d[1])
             xgrid,ygrid = np.meshgrid(xdata,ydata)
             ref['u'][uk[0]] = xgrid.reshape(quality_2d[0]*quality_2d[1])
             ref['u'][uk[1]] = ygrid.reshape(quality_2d[0]*quality_2d[1])
-            u = np.array([eval(iuf) for iuf in uf])
-            output = "_".join(['u',uk[0],'u',uk[1],'2D'])
+            # recalculate u for new u
+            T = ref['T']
+            for name in uk: # not for all u
+                ref['u'][name] += ref['E'][name]
+                ref['u'][name] += ref['dZPE'][name]
+                ref['u'][name] += ref['HT'][name](T) 
         else:
             print("Unsupport 2D plot for: "+str(keys))
             exit(0)
-
         # Get 2D data
         zgrid = []
         zgrid.append(np.zeros(xgrid.shape)) # all grid should compare to 0!
-        for idx in range(len(data)): # the index of zgrid
-            dG = data['dG'].iloc[idx]
-            nads = data['Nads'].iloc[idx]
-            dG -= nads*u[idx]
-            zgrid.append(dG.reshape(quality_2d))
+    elif nvar > 2:
+        print("Number of variables must less than 2!")
+        exit(0)
+
+    # eval dG
+    dG = []
+    for irow in range(len(data)):
+        idata = data.iloc[irow]
+        Nads = idata['Nads']
+        iformula = idata['Formula']
+        Total = idata['G_Total']
+        Slab = idata['G_Slab']
+        dG.append(eval(new_formula(ref,iformula,'u')))
+
+    # output
+    if nvar == 0:
+        # 这意味着p和T (or u) 是一个值, 不做图
+        data['dG'] = dG
+        data['dG_avg'] = data['dG']/data['Nads'] # 平均吸附能
+        print('Save data to excel file G_result.xslx')
+        data = data[['Name','Nads','Formula','E_Slab','ZPE_Slab','E_Total','ZPE_Total','dG','dG_avg',]]
+        data.to_excel('G_result.xlsx',float_format='%.4f',index=False)
+    elif nvar == 1:
+        ydata = {}
+        for irow in range(len(data)):
+            idata = data.iloc[irow]
+            Nads = idata['Nads']
+            name = idata['Name']
+            ydata[name+'(N='+str(Nads)+')'] = dG[irow]
+        plot_dict = {
+            'xdata':xdata,
+            'ydata': ydata,
+            'xlabel':xlabel,
+            'embed': embed,
+            'output':output,
+        }
+        print(xdata)
+        plot_1D(plot_dict)
+    elif nvar == 2:
+        zgrid += [idG.reshape(quality_2d) for idG in dG]
         zgrid = np.array(zgrid)
         ngrid = zgrid.argmin(0)
         nmax,nmin = len(data)+1,0
@@ -526,11 +534,4 @@ if __name__ == '__main__':
         }
         plot_2D(plot_dict)
 
-    else:
-        print("Number of variables must less than 2!")
-        exit(0)
-
-    print('Save data to excel file G_result.xslx')
-    data = data[['Name','Nads','Formula_ads','E_slab','ZPE_slab','E_ads','dZPE_ads','E_total','ZPE_total','dG','dG_avg','dG_step']]
-    data.to_excel('G_result.xlsx',float_format='%.4f',index=False)
 #    close_veusz(embed,vdisplay)
