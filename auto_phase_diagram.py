@@ -365,25 +365,25 @@ if __name__ == '__main__':
         u_p = np.array([8.314*ref['T']*eval(ipf)/1000/96.4853 for ipf in pf])
         # entropy part
         sf = [new_formula(ref,f,'S') for f in formula] # for entropy
+        hf = [new_formula(ref,f,'HT') for f in formula] # for HT
         u_ts = []
-        for isf in sf:
+        u_HT = []
+        for i in range(len(sf)):
+            isf = sf[i]
+            ihf = hf[i]
             if 'T' in variable:
                 u_ts.append(isf) # return a list of function(just entropy)
-            else:
-                T = ref['T']
-                u_ts.append(-T*eval(isf))
-        u_ts = np.array(u_ts)
-        # enthalpy correction
-        hf = [new_formula(ref,f,'HT') for f in formula] # for HT
-        u_HT = []
-        for ihf in hf:
-            if 'T' in variable:
                 u_HT.append(ihf) # return a list of function
             else:
                 T = ref['T']
+                u_ts.append(-T*eval(isf))
                 u_HT.append(eval(ihf))
+        u_ts = np.array(u_ts)
         u_HT = np.array(u_HT)
-        u = np.array([u_p[i]+u_ts[i]+u_HT[i] for i in range(len(u_ts))]) # cannot add them directly!
+        if 'T' in variable:
+            u = None # not required
+        else:
+            u = np.array([u_p[i]+u_ts[i]+u_HT[i] for i in range(len(u_ts))]) # cannot add them directly!
     except Exception as e1:
         print(e1)
         print("Use u directly.")
@@ -392,8 +392,9 @@ if __name__ == '__main__':
             uf = [new_formula(ref,f,'u') for f in formula] # for u
             u = np.array([eval(iuf) for iuf in uf])
         except Exception as e2:
-            print("Pls provide enough ref data: p, T or u!")
+            print("Error: Pls provide enough ref data: p, T or u!")
             print(e2)
+            exit(0)
     nvar = len(variable)
     if nvar == 1:
         k = list(variable)[0]
