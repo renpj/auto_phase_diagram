@@ -400,14 +400,14 @@ if __name__ == '__main__':
                 ref['u'][name] += 8.314*T*ref['p'][name]/1000/96.4853 
                 ref['u'][name] -= T*ref['S'][name](T) 
         elif vk == 'p':
-            xlabel = 'ln(p('+ vv.keys()[0] + ')/p0)'
+            xlabel = 'ln(p('+ list(vv.keys())[0] + ')/p0)'
             xdata = vv.values()[0]
-            output = 'G_'+vk+'_'+vv.keys()[0]
+            output = 'G_'+vk+'_'+list(vv.keys())[0]
             # no required for recalculate u
         elif vk == 'u':
-            xlabel = 'u('+ vv.keys()[0] + ') (eV)'
-            xdata = vv.values()[0]
-            output = 'G_'+vk+'_'+vv.keys()[0]
+            xlabel = 'u('+ list(vv.keys())[0] + ') (eV)'
+            xdata = list(vv.values())[0]
+            output = 'G_'+vk+'_'+list(vv.keys())[0]
             # no required for recalculate u
         else:
             print('Unsupport variable!')
