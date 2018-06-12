@@ -5,6 +5,43 @@ import pandas as pd
 import parser
 import shutil
 
+# blue_darkred
+# copy from veusz/util/colormap
+color_map = (
+    (216, 0, 36, 255),
+    (247, 28, 24, 255),
+    (255, 87, 40, 255),
+    (255, 135, 61, 255),
+    (255, 176, 86, 255),
+    (255, 211, 117, 255),
+    (255, 234, 153, 255),
+    (255, 249, 188, 255),
+    (255, 255, 234, 255),
+    (234, 255, 255, 255),
+    (188, 241, 255, 255),
+    (153, 214, 255, 255),
+    (117, 172, 255, 255),
+    (86, 120, 255, 255),
+    (61, 61, 255, 255),
+    (53, 39, 247, 255),
+    (47, 21, 216, 255),
+    (33, 0, 165, 255)
+)
+
+def get_color(n):
+    '''
+    Return a list of color in hex with length of n.
+    The color list is interpolate of colormap.
+    '''
+    cmap = np.array(color_map)
+    x0 = np.linspace(0,1,len(color_map))
+    x = np.linspace(0,1,n)
+    r = np.interp(x,x0,cmap[:,0]).astype(np.intc)
+    g = np.interp(x,x0,cmap[:,1]).astype(np.intc)
+    b = np.interp(x,x0,cmap[:,2]).astype(np.intc)
+    clist = ['#%02x%02x%02x' % tuple(rgb) for rgb in zip(r,g,b)]
+    return clist
+
 def start_veusz():
     # for ploting by veusz 
     print("Preparing plotting environment ...")
