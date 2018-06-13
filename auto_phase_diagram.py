@@ -330,6 +330,7 @@ def plot_2D(plot_dict):
     nmax = plot_dict['nmax']
     xlabel = plot_dict['xlabel']
     ylabel = plot_dict['ylabel']
+    label = plot_dict['label']
     output_filename = plot_dict['output']
     embed = plot_dict['embed']
     print('Generate 2D contour '+output_filename)
@@ -346,7 +347,7 @@ def plot_2D(plot_dict):
     ncolormap = str(max(nmax-nmin,2))
     veusz_set.append("Set('/contour/graph1/image1/colorMap', u'blue-darkred-step"+ncolormap+"')")
     veusz_set.append("Set('/contour/graph1/colorbar1/MajorTicks/number', "+ncolormap+")")
-    level = np.unique(ngrid).tolist()
+    level = ncolormap
     veusz_set.append("Set('/contour/graph1/contour1/manualLevels', "+str(level)+")")
     xmin = min(xdata)
     xmax = max(xdata)
@@ -358,6 +359,28 @@ def plot_2D(plot_dict):
     veusz_set.append("Set('/contour/graph1/y/label','"+ ylabel+"')")
     veusz_set.append("Set('/contour/graph1/y/min',"+str(float(ymin))+")")
     veusz_set.append("Set('/contour/graph1/y/max',"+str(float(ymax))+")")
+    # add label and rect
+    cmap = get_color(ncolormap)
+    for ilabel in label:
+        if ilabel != 0:
+            label_name = 'label'+str(ilabel+1)
+            rect_name = 'rect' + str(ilabel+1)
+            veusz_set.append("CloneWidget('/contour/graph1/label1','/contour/graph1','"+label_name+"')")
+            veusz_set.append("CloneWidget('/contour/graph1/rect1','/contour/graph1','"+rect_name+"')")
+        else:
+            label_name = 'label1'
+            rect_name = 'rect1'
+        # set label prop
+        veusz_set.append("Set('/contour/graph1/"+label_name+"/label','"+ilabel+"')")
+        xPos = 1.12-ilabel*0.07
+        veusz_set.append("Set('/contour/graph1/"+label_name+"/xPos',["+str(xPos)+"])")
+        veusz_set.append("Set('/contour/graph1/"+label_name+"/yPos',[0.96])")
+        # set rect prop
+        xPos = 1.07-ilabel*0.07
+        veusz_set.append("Set('/contour/graph1/"+rect_name+"/xPos',["+str(xPos)+"])")
+        veusz_set.append("Set('/contour/graph1/"+rect_name+"/yPos',[0.97])")
+        veusz_set.append("Set('/contour/graph1/"+rect_name+"/Fill/color','#"+cmap(ilabel)+"')")
+
     veusz_set.append("Remove('/data')")
     shutil.copy2('template.vsz',output_filename+'.vsz')
     veusz_file = open(output_filename+'.vsz','a')
@@ -555,6 +578,7 @@ if __name__ == '__main__':
         plot_1D(plot_dict)
     elif nvar == 2:
         # get Gmin
+        dG = np.array(dG)
         Gmin = dG.min(0) # column min
         ddG = dG - Gmin
         # calculate partition function
@@ -571,20 +595,20 @@ if __name__ == '__main__':
         # make it grid like 
         ngrid = Narray.reshape(quality_2d)
         # get the area centers and labels
-        acenter = []
+        # abandon calculting area center, some may not connect
+        #acenter = []
         label = {}
         namelist = data['Name']
         for idx,iLP in enumerate(LPset):
-            condition = ngrid==idx
-            acenter.append(np.array([xdata[condition].sum(),ydata[condition].sum()])/len(condition))
+            #condition = ngrid==idx
+            #acenter.append(np.array([xdata[condition].sum(),ydata[condition].sum()])/len(condition))
             name = namelist[iLP]
             name = str(tuple(name)) if hasattr(name ,'__iter__') else name
-            label[idx] = name
-            
+            label[idx] = name   
         #zgrid += [idG.reshape(quality_2d) for idG in dG]
         #zgrid = np.array(zgrid)
         #ngrid = zgrid.argmin(0)
-        nmax,nmin = len(LPset)+1,0
+        nmax,nmin = len(LPset)+1,1
         plot_dict = {
             'ngrid':ngrid,
             'xdata':xdata,
@@ -595,6 +619,7 @@ if __name__ == '__main__':
             'ylabel':ylabel,
             'output':output,
             'embed':embed,
+            'label':label,
         }
         plot_2D(plot_dict)
 
