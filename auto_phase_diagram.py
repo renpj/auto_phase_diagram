@@ -554,10 +554,37 @@ if __name__ == '__main__':
         print(xdata)
         plot_1D(plot_dict)
     elif nvar == 2:
-        zgrid += [idG.reshape(quality_2d) for idG in dG]
-        zgrid = np.array(zgrid)
-        ngrid = zgrid.argmin(0)
-        nmax,nmin = len(data)+1,0
+        # get Gmin
+        Gmin = dG.min(0) # column min
+        ddG = dG - Gmin
+        # calculate partition function
+        q = np.exp(ddG*1000*96.4853/8.314/T) # note: T can be a array or number
+        # calculate probability
+        P = q/q.sum(0)
+        # get logical array
+        LP = P >= 0.02 # the probability bigger than 0.02 can exists
+        LPset = list(set(map(tuple,LP.T))) # note: column mode
+        # get index array
+        Narray = np.ones(quality_2d[0]*quality_2d[1])*-1 # default value is -1
+        for idx,iLP in enumerate(LPset):
+            Narray[np.all(LP.T==iLP,1)] = idx
+        # make it grid like 
+        ngrid = Narray.reshape(quality_2d)
+        # get the area centers and labels
+        acenter = []
+        label = {}
+        namelist = data['Name']
+        for idx,iLP in enumerate(LPset):
+            condition = ngrid==idx
+            acenter.append(np.array([xdata[condition].sum(),ydata[condition].sum()])/len(condition))
+            name = namelist[iLP]
+            name = str(tuple(name)) if hasattr(name ,'__iter__') else name
+            label[idx] = name
+            
+        #zgrid += [idG.reshape(quality_2d) for idG in dG]
+        #zgrid = np.array(zgrid)
+        #ngrid = zgrid.argmin(0)
+        nmax,nmin = len(LPset)+1,0
         plot_dict = {
             'ngrid':ngrid,
             'xdata':xdata,
