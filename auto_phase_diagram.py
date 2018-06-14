@@ -6,7 +6,7 @@ import parser
 import shutil
 
 # blue_darkred
-# copy from veusz/util/colormap
+# copy from veusz/utils/colormap
 color_map = ( # order: b,g,r
     (216, 0, 36, 255),
     (247, 28, 24, 255),
@@ -30,7 +30,7 @@ color_map = ( # order: b,g,r
 
 def get_color(n,start=0,stop=1):
     '''
-    Return a list of color in hex with length of n.
+    Return a dict of color in hex with length of n.
     The color list is interpolate of colormap.
     '''
     cmap = np.array(color_map)
@@ -364,6 +364,8 @@ def plot_2D(plot_dict):
     veusz_set.append("Set('/contour/graph1/y/max',"+str(float(ymax))+")")
     # add label and rect
     cmap = get_color(ncolormap,nmin,nmax-1)
+    label_file=open(output_filename+'_labelname.dat','w')
+    print("Label name:")
     for ilabel in label:
         if ilabel != 0:
             label_name = 'label'+str(ilabel+1)
@@ -381,8 +383,10 @@ def plot_2D(plot_dict):
         yPos = 0.97-ilabel*0.07
         veusz_set.append("Set('/contour/graph1/"+rect_name+"/yPos',["+str(yPos)+"])")
         veusz_set.append("Set('/contour/graph1/"+rect_name+"/Fill/color','"+cmap[ilabel]+"')")
-        print("Label name:")
         print(str(ilabel)+': '+label[ilabel])
+        label_file.write("%4i\t%s\n" %(ilabel,label[ilabel]))
+    label_file.close()
+    print("Label names were saved in "+output_filename+'_labelname.dat')
     veusz_set.append("Remove('/data')")
     shutil.copy2('template.vsz',output_filename+'.vsz')
     veusz_file = open(output_filename+'.vsz','a')
@@ -598,18 +602,14 @@ if __name__ == '__main__':
         Narray = np.ones(quality_2d[0]*quality_2d[1])*-1 # default value is -1
         for idx,iLP in enumerate(LPset):
             Narray[np.all(LP.T==iLP,1)] = idx
-        label_id = np.unique(Narray).astype(np.intc)
         # make it grid like 
         ngrid = Narray.reshape(quality_2d)
-        # get the area centers and labels
-        # abandon calculting area center, some may not connect
-        #acenter = []
+        # get the labels
         label = {}
+        label_id = np.unique(Narray).astype(np.intc)
         namelist = np.array([0]+list(data['Name']))
         nadslist = np.array([0]+list(data['Nads']))
         for idx in label_id:
-            #condition = ngrid==idx
-            #acenter.append(np.array([xdata[condition].sum(),ydata[condition].sum()])/len(condition)) 
             if idx != -1:
                 iLP = LPset[idx]
                 name = namelist[np.array(iLP)]
@@ -624,9 +624,6 @@ if __name__ == '__main__':
                 label[idx] = label_name   
             else:
                 label[idx] = None
-        #zgrid += [idG.reshape(quality_2d) for idG in dG]
-        #zgrid = np.array(zgrid)
-        #ngrid = zgrid.argmin(0)
         nmax,nmin = len(LPset),-1
         plot_dict = {
             'ngrid':ngrid,
