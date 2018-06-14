@@ -7,7 +7,7 @@ import shutil
 
 # blue_darkred
 # copy from veusz/util/colormap
-color_map = (
+color_map = ( # order: b,g,r
     (216, 0, 36, 255),
     (247, 28, 24, 255),
     (255, 87, 40, 255),
@@ -28,19 +28,22 @@ color_map = (
     (33, 0, 165, 255)
 )
 
-def get_color(n):
+def get_color(n,start=0,stop=1):
     '''
     Return a list of color in hex with length of n.
     The color list is interpolate of colormap.
     '''
     cmap = np.array(color_map)
-    x0 = np.linspace(0,1,len(color_map))
-    x = np.linspace(0,1,n)
-    r = np.interp(x,x0,cmap[:,0]).astype(np.intc)
+    x0 = np.linspace(start,stop,len(color_map))
+    x = np.linspace(start,stop,n).astype(np.intc)
+    b = np.interp(x,x0,cmap[:,0]).astype(np.intc)
     g = np.interp(x,x0,cmap[:,1]).astype(np.intc)
-    b = np.interp(x,x0,cmap[:,2]).astype(np.intc)
+    r = np.interp(x,x0,cmap[:,2]).astype(np.intc)
     clist = ['#%02x%02x%02x' % tuple(rgb) for rgb in zip(r,g,b)]
-    return clist
+    cdict = {}
+    for i,c in enumerate(clist):
+        cdict[x[i]] = c
+    return cdict
 
 def start_veusz():
     # for ploting by veusz 
@@ -344,10 +347,10 @@ def plot_2D(plot_dict):
         +")")
     veusz_set.append("Set('/contour/graph1/image1/min',"+str(nmin)+")")
     veusz_set.append("Set('/contour/graph1/image1/max',"+str(nmax)+")")
-    ncolormap = str(max(nmax-nmin,2))
+    ncolormap = str(nmax-nmin)
     veusz_set.append("Set('/contour/graph1/image1/colorMap', u'blue-darkred-step"+ncolormap+"')")
     veusz_set.append("Set('/contour/graph1/colorbar1/MajorTicks/number', "+ncolormap+")")
-    level = ncolormap
+    level = np.unique(ngrid).tolist()
     veusz_set.append("Set('/contour/graph1/contour1/manualLevels', "+str(level)+")")
     xmin = min(xdata)
     xmax = max(xdata)
@@ -360,7 +363,7 @@ def plot_2D(plot_dict):
     veusz_set.append("Set('/contour/graph1/y/min',"+str(float(ymin))+")")
     veusz_set.append("Set('/contour/graph1/y/max',"+str(float(ymax))+")")
     # add label and rect
-    cmap = get_color(ncolormap)
+    cmap = get_color(ncolormap,nmin,nmax-1)
     for ilabel in label:
         if ilabel != 0:
             label_name = 'label'+str(ilabel+1)
@@ -371,22 +374,22 @@ def plot_2D(plot_dict):
             label_name = 'label1'
             rect_name = 'rect1'
         # set label prop
-        veusz_set.append("Set('/contour/graph1/"+label_name+"/label','"+ilabel+"')")
-        xPos = 1.12-ilabel*0.07
-        veusz_set.append("Set('/contour/graph1/"+label_name+"/xPos',["+str(xPos)+"])")
-        veusz_set.append("Set('/contour/graph1/"+label_name+"/yPos',[0.96])")
+        veusz_set.append("Set('/contour/graph1/"+label_name+"/label','"+str(ilabel)+"')")
+        yPos = 0.96-ilabel*0.07
+        veusz_set.append("Set('/contour/graph1/"+label_name+"/yPos',["+str(yPos)+"])")
         # set rect prop
-        xPos = 1.07-ilabel*0.07
-        veusz_set.append("Set('/contour/graph1/"+rect_name+"/xPos',["+str(xPos)+"])")
-        veusz_set.append("Set('/contour/graph1/"+rect_name+"/yPos',[0.97])")
-        veusz_set.append("Set('/contour/graph1/"+rect_name+"/Fill/color','#"+cmap(ilabel)+"')")
-
+        yPos = 0.97-ilabel*0.07
+        veusz_set.append("Set('/contour/graph1/"+rect_name+"/yPos',["+str(yPos)+"])")
+        veusz_set.append("Set('/contour/graph1/"+rect_name+"/Fill/color','"+cmap[ilabel]+"')")
+        print("Label name:")
+        print(str(ilabel)+': '+label[ilabel])
     veusz_set.append("Remove('/data')")
     shutil.copy2('template.vsz',output_filename+'.vsz')
     veusz_file = open(output_filename+'.vsz','a')
     for i in veusz_set:
         veusz_file.write(i+'\n')
     veusz_file.close()
+
     # save data to .dat file
     dim = quality_2d[0]*quality_2d[1]
     xyz = np.asarray([xgrid.reshape(dim),ygrid.reshape(dim),ngrid.reshape(dim)]).T
@@ -574,15 +577,18 @@ if __name__ == '__main__':
             'embed': embed,
             'output':output,
         }
-        print(xdata)
         plot_1D(plot_dict)
     elif nvar == 2:
         # get Gmin
-        dG = np.array(dG)
+        dG = np.array([[0]*(quality_2d[0]*quality_2d[1])]+dG)
         Gmin = dG.min(0) # column min
         ddG = dG - Gmin
         # calculate partition function
-        q = np.exp(ddG*1000*96.4853/8.314/T) # note: T can be a array or number
+        if type(T) not in (np.ndarray,):
+            if T==0:
+                T = 298.15
+                print("Use T=298.15 instead of 0!")
+        q = np.exp(-ddG*1000*96.4853/8.314/T) # note: T can be a array or number
         # calculate probability
         P = q/q.sum(0)
         # get logical array
@@ -592,23 +598,36 @@ if __name__ == '__main__':
         Narray = np.ones(quality_2d[0]*quality_2d[1])*-1 # default value is -1
         for idx,iLP in enumerate(LPset):
             Narray[np.all(LP.T==iLP,1)] = idx
+        label_id = np.unique(Narray).astype(np.intc)
         # make it grid like 
         ngrid = Narray.reshape(quality_2d)
         # get the area centers and labels
         # abandon calculting area center, some may not connect
         #acenter = []
         label = {}
-        namelist = data['Name']
-        for idx,iLP in enumerate(LPset):
+        namelist = np.array([0]+list(data['Name']))
+        nadslist = np.array([0]+list(data['Nads']))
+        for idx in label_id:
             #condition = ngrid==idx
-            #acenter.append(np.array([xdata[condition].sum(),ydata[condition].sum()])/len(condition))
-            name = namelist[iLP]
-            name = str(tuple(name)) if hasattr(name ,'__iter__') else name
-            label[idx] = name   
+            #acenter.append(np.array([xdata[condition].sum(),ydata[condition].sum()])/len(condition)) 
+            if idx != -1:
+                iLP = LPset[idx]
+                name = namelist[np.array(iLP)]
+                nads = nadslist[np.array(iLP)]
+                label_name = []
+                if hasattr(name ,'__iter__'):
+                    for iname,inads in zip(name,nads):
+                        label_name.append(iname+'(N='+str(inads)+')')
+                    label_name = str(tuple(label_name))
+                else:
+                    label_name = iname+'(N='+str(inads)+')'
+                label[idx] = label_name   
+            else:
+                label[idx] = None
         #zgrid += [idG.reshape(quality_2d) for idG in dG]
         #zgrid = np.array(zgrid)
         #ngrid = zgrid.argmin(0)
-        nmax,nmin = len(LPset)+1,1
+        nmax,nmin = len(LPset),-1
         plot_dict = {
             'ngrid':ngrid,
             'xdata':xdata,
