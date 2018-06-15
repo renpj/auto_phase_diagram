@@ -15,7 +15,8 @@ Automatic analysis and plot surface phase diagram from DFT calculation.
 *Most of them can install by apt (Debian-based) and pip*
 ## Usage
 1. Put all required data into an excel file, name as e.g. input.xlsx 
-2. run "python auto_phase_diagram.py input.xlsx"
+2. run "python auto_phase_diagram.py input.xlsx [--probability threshold]". --probability is optional, where threshold is float and means the minimum ratio for an exist phase. 
+* Note: input.xlsx should has xls or xlsx postfix
 
 ## Output
 1. G_result.xlsx
