@@ -412,10 +412,31 @@ if __name__ == '__main__':
     
     import sys
     args = sys.argv
-    if not (len(args) == 2):
-        print("usage: auto_phase_diagram.py xls_file")
+    lprobability = False
+    p_threshold = 0.05
+    filename = None
+    if (len(args) < 2):
+        print("usage: auto_phase_diagram.py xls_file [--probability threshold]")
         exit(0)
-    filename = args[1]
+    else:
+        for idx,arg in enumerate(args):
+            if arg == '--probability':
+                try:
+                    p_threshold = float(args[idx+1])
+                    if p_threshold <= 0.0:
+                        print("Use default threshold 0.05.")
+                        p_threshold = 0.05
+                except:
+                    print("Use default threshold 0.05.")
+                    pass
+                lprobability = True
+            elif '.xls' in arg:
+                filename = arg
+                    
+    if not filename:
+        print("usage: auto_phase_diagram.py xls_file [--probability threshold]")
+        print(".xls file should be provided!")
+        exit(0)
     input_data,ref_data,ref_detail = data_from_xls(filename)
     formula = input_data['Formula'] # formula is pd.Series
     ref,variable =  get_ref(ref_data,ref_detail,formula)
@@ -595,11 +616,14 @@ if __name__ == '__main__':
             if T==0:
                 T = 298.15
                 print("Use T=298.15 instead of 0!")
+        if not lprobability:
+            T = 0.00000000001 # use very small T
+        print T
         q = np.exp(-ddG*1000*96.4853/8.314/T) # note: T can be a array or number
         # calculate probability
         P = q/q.sum(0)
         # get logical array
-        LP = P >= 0.05 # the probability bigger than 0.02 can exists
+        LP = P >= p_threshold # the probability bigger than threshold can exists
         LPset = list(set(map(tuple,LP.T))) # note: column mode
         # get index array
         Narray = np.ones(quality_2d[0]*quality_2d[1])*-1 # default value is -1
