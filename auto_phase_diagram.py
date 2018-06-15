@@ -170,7 +170,7 @@ def get_ref(ref_data,ref_detail,formula):
         ref['T'] = 0 # default value for ref['T']
     else:
         t = t.iloc[0]
-        if type(t) in (np.float64,int,float): # t is a number, type is from pandas
+        if type(t) in (np.float64,np.int64,int,float): # t is a number, type is from pandas
             ref['T'] = t
         else: # t is a variable
             try:
@@ -179,8 +179,9 @@ def get_ref(ref_data,ref_detail,formula):
                     variable['T'] = ref['T']
                 else:
                     ref['T'] = ref['T'][0]
-            except:
+            except Exception as e:
                 print("Error: Please check the temperature format!")
+                print(e)
                 exit(0)
     
     ref['S'] = {}
@@ -209,30 +210,32 @@ def get_ref(ref_data,ref_detail,formula):
             for r in ('S','HT',):
                 rd = row[r]
                 if rd.notnull().iloc[0]:
-                    c = str(rd.iloc[0])
-                    ref[r][iname] = lambda x:np.ones(len(x))*eval(c) if hasattr(x,'__iter__') else eval(c)  # 形式一致性
+                    def func(x,c=rd.iloc[0]):
+                        return np.ones(len(x))*c if hasattr(x,'__iter__') else c
                 else:
                     if iname in ref_detail: # use S(T) and H(T)
                         v = ref_detail[iname]
                         if r in v.columns:
                             if np.all(pd.notnull(v[r])):
-                                ref[r][iname] = lambda x: np.interp(x,v['T'],v[r]) # 形式一致性
+                                def func(x,vt=v['T'],vr=v[r]):
+                                    return np.interp(x,vt,vr)
                             else:
                                 print("Error: pls check ref_"+iname)
                                 break
                         else:
-                            ref[r][iname] = lambda x: np.zeros(len(x)) if hasattr(x,'__iter__') else 0.0   # 形式一致性
+                            def func(x):
+                                return np.zeros(len(x)) if hasattr(x,'__iter__') else 0.0
                     else:
                         print ("Error: No "+r+" vaule for "+iname)
                         break
-                
+                ref[r][iname] = func
             # assign pressure
             p = row['Press']
 
             if p.isnull().iloc[0]:
                 ref['p'][iname] = None # unit ln(bar)
             else:
-                if type(p.iloc[0]) in (np.float64,int,float):
+                if type(p.iloc[0]) in (np.float64,np.int64,int,float):
                     ref['p'][iname] = np.log(p.iloc[0])
                 else:
                     try:
@@ -596,7 +599,7 @@ if __name__ == '__main__':
         # calculate probability
         P = q/q.sum(0)
         # get logical array
-        LP = P >= 0.02 # the probability bigger than 0.02 can exists
+        LP = P >= 0.05 # the probability bigger than 0.02 can exists
         LPset = list(set(map(tuple,LP.T))) # note: column mode
         # get index array
         Narray = np.ones(quality_2d[0]*quality_2d[1])*-1 # default value is -1
