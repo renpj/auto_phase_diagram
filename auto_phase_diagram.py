@@ -460,7 +460,7 @@ if __name__ == '__main__':
             ref['u'][name] = ref['u'][name]+ref['E'][name]+ref['dZPE'][name]+ref['HT'][name](T)
             print("Done!")
         except Exception as e1:
-            print(e1)
+            print("This is why can't use u directly: "+str(e1)) # 
             # get u from T and p
             print("Try to get u from T and p ...")
             try:
@@ -618,7 +618,6 @@ if __name__ == '__main__':
                 print("Use T=298.15 instead of 0!")
         if not lprobability:
             T = 0.00000000001 # use very small T
-        print T
         q = np.exp(-ddG*1000*96.4853/8.314/T) # note: T can be a array or number
         # calculate probability
         P = q/q.sum(0)
