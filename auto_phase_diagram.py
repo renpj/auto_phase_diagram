@@ -332,6 +332,8 @@ def plot_2D(plot_dict):
     ngrid = plot_dict['ngrid']
     xdata = plot_dict['xdata']
     ydata = plot_dict['ydata']
+    xgrid = plot_dict['xgrid']
+    ygrid = plot_dict['ygrid']
     nmin = plot_dict['nmin']
     nmax = plot_dict['nmax']
     xlabel = plot_dict['xlabel']
@@ -398,6 +400,7 @@ def plot_2D(plot_dict):
     veusz_file.close()
 
     # save data to .dat file
+    quality_2d = xgrid.shape
     dim = quality_2d[0]*quality_2d[1]
     xyz = np.asarray([xgrid.reshape(dim),ygrid.reshape(dim),ngrid.reshape(dim)]).T
     np.savetxt(output_filename+'.dat',xyz,fmt='%.5f',header=" ".join((xlabel,ylabel,"N")))
@@ -463,7 +466,7 @@ def phase_diagram(input_xls,quality_2d=(500,500),lprobability=False,p_threshold=
                 ref['u'][name] -= T*ref['S'][name](T) 
         elif vk == 'p':
             xlabel = 'ln(p('+ list(vv.keys())[0] + ')/p0)'
-            xdata = vv.values()[0]
+            xdata = list(vv.values())[0]
             output = 'G_'+vk+'_'+list(vv.keys())[0]
             # no required for recalculate u
         elif vk == 'u':
@@ -550,8 +553,8 @@ def phase_diagram(input_xls,quality_2d=(500,500),lprobability=False,p_threshold=
         idata = data.iloc[irow]
         Nads = idata['Nads']
         iformula = idata['Formula']
-        Total = idata['G_Total']
-        Slab = idata['G_Slab']
+        Total = idata['G_Total'] # for eval formula
+        Slab = idata['G_Slab'] # for eval formula
         dG.append(eval(new_formula(ref,iformula,'u')))
 
     # output
@@ -626,6 +629,8 @@ def phase_diagram(input_xls,quality_2d=(500,500),lprobability=False,p_threshold=
             'ngrid':ngrid,
             'xdata':xdata,
             'ydata':ydata,
+            'xgrid':xgrid,
+            'ygrid':ygrid,
             'nmin':nmin,
             'nmax':nmax,
             'xlabel':xlabel,
