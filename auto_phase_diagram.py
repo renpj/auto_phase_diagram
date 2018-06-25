@@ -332,6 +332,8 @@ def plot_2D(plot_dict):
     ngrid = plot_dict['ngrid']
     xdata = plot_dict['xdata']
     ydata = plot_dict['ydata']
+    xgrid = plot_dict['xgrid']
+    ygrid = plot_dict['ygrid']
     nmin = plot_dict['nmin']
     nmax = plot_dict['nmax']
     xlabel = plot_dict['xlabel']
@@ -398,6 +400,7 @@ def plot_2D(plot_dict):
     veusz_file.close()
 
     # save data to .dat file
+    quality_2d = xgrid.shape
     dim = quality_2d[0]*quality_2d[1]
     xyz = np.asarray([xgrid.reshape(dim),ygrid.reshape(dim),ngrid.reshape(dim)]).T
     np.savetxt(output_filename+'.dat',xyz,fmt='%.5f',header=" ".join((xlabel,ylabel,"N")))
@@ -406,38 +409,9 @@ def plot_2D(plot_dict):
         print('Export to '+output_filename+'.jpg')
         embed.Export(output_filename+'.jpg',dpi=300)
         
-if __name__ == '__main__':
-    # Constant
-    quality_2d = (500,500) # the quality for 2D contour map
-    
-    import sys
-    args = sys.argv
-    lprobability = False
-    p_threshold = 0.05
-    filename = None
-    if (len(args) < 2):
-        print("usage: auto_phase_diagram.py xls_file [--probability threshold]")
-        exit(0)
-    else:
-        for idx,arg in enumerate(args):
-            if arg == '--probability':
-                try:
-                    p_threshold = float(args[idx+1])
-                    if p_threshold <= 0.0:
-                        print("Use default threshold 0.05.")
-                        p_threshold = 0.05
-                except:
-                    print("Use default threshold 0.05.")
-                    pass
-                lprobability = True
-            elif '.xls' in arg:
-                filename = arg
-                    
-    if not filename:
-        print("usage: auto_phase_diagram.py xls_file [--probability threshold]")
-        print(".xls file should be provided!")
-        exit(0)
-    input_data,ref_data,ref_detail = data_from_xls(filename)
+def phase_diagram(input_xls,quality_2d=(500,500),lprobability=False,p_threshold=0.05):
+
+    input_data,ref_data,ref_detail = data_from_xls(input_xls)
     formula = input_data['Formula'] # formula is pd.Series
     ref,variable =  get_ref(ref_data,ref_detail,formula)
     data = check_data(input_data,ref)
@@ -492,7 +466,7 @@ if __name__ == '__main__':
                 ref['u'][name] -= T*ref['S'][name](T) 
         elif vk == 'p':
             xlabel = 'ln(p('+ list(vv.keys())[0] + ')/p0)'
-            xdata = vv.values()[0]
+            xdata = list(vv.values())[0]
             output = 'G_'+vk+'_'+list(vv.keys())[0]
             # no required for recalculate u
         elif vk == 'u':
@@ -579,8 +553,8 @@ if __name__ == '__main__':
         idata = data.iloc[irow]
         Nads = idata['Nads']
         iformula = idata['Formula']
-        Total = idata['G_Total']
-        Slab = idata['G_Slab']
+        Total = idata['G_Total'] # for eval formula
+        Slab = idata['G_Slab'] # for eval formula
         dG.append(eval(new_formula(ref,iformula,'u')))
 
     # output
@@ -655,6 +629,8 @@ if __name__ == '__main__':
             'ngrid':ngrid,
             'xdata':xdata,
             'ydata':ydata,
+            'xgrid':xgrid,
+            'ygrid':ygrid,
             'nmin':nmin,
             'nmax':nmax,
             'xlabel':xlabel,
@@ -666,3 +642,35 @@ if __name__ == '__main__':
         plot_2D(plot_dict)
 
 #    close_veusz(embed,vdisplay)
+
+if __name__ == '__main__':
+    # Constant
+    quality_2d = (500,500) # the quality for 2D contour map
+    import sys
+    args = sys.argv
+    lprobability = False
+    p_threshold = 0.05
+    filename = None
+    if (len(args) < 2):
+        print("usage: auto_phase_diagram.py xls_file [--probability threshold]")
+        exit(0)
+    else:
+        for idx,arg in enumerate(args):
+            if arg == '--probability':
+                try:
+                    p_threshold = float(args[idx+1])
+                    if p_threshold <= 0.0:
+                        print("Use default threshold 0.05.")
+                        p_threshold = 0.05
+                except:
+                    print("Use default threshold 0.05.")
+                    pass
+                lprobability = True
+            elif '.xls' in arg:
+                filename = arg
+                    
+    if not filename:
+        print("usage: auto_phase_diagram.py xls_file [--probability threshold]")
+        print(".xls file should be provided!")
+        exit(0)
+    phase_diagram(filename,quality_2d=quality_2d,lprobability=lprobability,p_threshold=p_threshold)
