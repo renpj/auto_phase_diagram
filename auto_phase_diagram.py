@@ -480,7 +480,7 @@ def phase_diagram(input_xls,quality_2d=(500,500),lprobability=False,p_threshold=
 
     elif nvar == 2:      
         """
-        Three cases: (T,p), (p1,p2), (u1,u2)
+        Three cases: (T,p), (p1,p2), (u1,u2), (T, u)
         """     
         keys = variable.keys()
         if ('T' in keys) and ('p' in keys):
@@ -501,6 +501,27 @@ def phase_diagram(input_xls,quality_2d=(500,500),lprobability=False,p_threshold=
                 ref['u'][name] += ref['HT'][name](T)
                 ref['u'][name] += 8.314*T*ref['p'][name]/1000/96.4853 
                 ref['u'][name] -= T*ref['S'][name](T) 
+
+        if ('T' in keys) and ('u' in keys):
+            xlabel = 'T(K)'
+            pk = list(variable['u'].keys())[0]
+            pv = list(variable['u'].values())[0]
+            ylabel = 'u('+ pk+ ') (eV))'
+            output = "_".join(['T','u',pk,'2D'])
+            xdata = np.linspace(variable['T'][0],variable['T'][1],quality_2d[0])
+            ydata = np.linspace(pv[0],pv[1],quality_2d[1])
+            xgrid,ygrid = np.meshgrid(xdata,ydata)
+            ref['u'][pk] = ygrid.reshape(quality_2d[0]*quality_2d[1])
+            T = xgrid.reshape(quality_2d[0]*quality_2d[1])
+            # recalculate u for new T
+            for name in ref['u']:
+                if name != pk: # don't calculate u for pk
+                    ref['u'][name] = ref['E'][name]
+                    ref['u'][name] += ref['dZPE'][name]
+                    ref['u'][name] += ref['HT'][name](T)
+                    ref['u'][name] += 8.314*T*ref['p'][name]/1000/96.4853 
+                    ref['u'][name] -= T*ref['S'][name](T) 
+                    
         elif ('p' in keys) and len(keys)==1:
             pk = list(variable['p'].keys())
             pv = list(variable['p'].values())
