@@ -408,23 +408,9 @@ def plot_2D(plot_dict):
         embed.Load(output_filename+'.vsz')
         print('Export to '+output_filename+'.jpg')
         embed.Export(output_filename+'.jpg',dpi=300)
-        
-def phase_diagram(input_xls,quality_2d=(500,500),lprobability=False,p_threshold=0.05):
 
-    input_data,ref_data,ref_detail = data_from_xls(input_xls)
-    formula = input_data['Formula'] # formula is pd.Series
-    ref,variable =  get_ref(ref_data,ref_detail,formula)
-    data = check_data(input_data,ref)
-    nvar = len(variable)
-    if nvar == 1:
-        k = list(variable)[0]
-        if k in ('p','u'):
-            nvar = len(variable[k])
-    print("Number of variable is "+str(nvar))
-    if nvar > 0:
-        print(variable)
-        embed,vdisplay = start_veusz()
-    
+def get_ref_u(raw_ref):
+    ref = raw_ref.copy()
     # get u for all ref
     for name in ref['u']:
         T = ref['T']
@@ -449,7 +435,23 @@ def phase_diagram(input_xls,quality_2d=(500,500),lprobability=False,p_threshold=
                 print("Error: Pls provide enough ref data: p, T or u!")
                 print(ref)
                 exit(0)
+    return ref
+def phase_diagram(input_xls,quality_2d=(500,500),lprobability=False,p_threshold=0.05):
 
+    input_data,ref_data,ref_detail = data_from_xls(input_xls)
+    formula = input_data['Formula'] # formula is pd.Series
+    ref,variable =  get_ref(ref_data,ref_detail,formula)
+    data = check_data(input_data,ref)
+    nvar = len(variable)
+    if nvar == 1:
+        k = list(variable)[0]
+        if k in ('p','u'):
+            nvar = len(variable[k])
+    print("Number of variable is "+str(nvar))
+    if nvar > 0:
+        print(variable)
+        embed,vdisplay = start_veusz()
+    ref = get_ref_u(ref)
     if nvar == 1:
         vk,vv = list(variable.items())[0]       
         if vk == 'T':
