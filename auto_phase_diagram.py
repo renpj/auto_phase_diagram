@@ -504,7 +504,7 @@ def phase_diagram(input_xls,quality_2d=(500,500),lprobability=False,p_threshold=
                 ref['u'][name] += 8.314*T*ref['p'][name]/1000/96.4853 
                 ref['u'][name] -= T*ref['S'][name](T) 
 
-        if ('T' in keys) and ('u' in keys):
+        elif ('T' in keys) and ('u' in keys):
             xlabel = 'T(K)'
             pk = list(variable['u'].keys())[0]
             pv = list(variable['u'].values())[0]
