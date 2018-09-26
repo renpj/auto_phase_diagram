@@ -1,9 +1,14 @@
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
+"""
+TODO:
+"""
 from __future__ import division
 import numpy as np
 import pandas as pd
 import parser
 import shutil
+import os
 
 # blue_darkred
 # copy from veusz/utils/colormap
@@ -27,6 +32,14 @@ color_map = ( # order: b,g,r
     (47, 21, 216, 255),
     (33, 0, 165, 255)
 )
+
+def get_veusz_template():
+    # read template.vsz from default dir or from work dir
+    if os.path.isfile('template.vsz'):
+        vsz_path = 'template.vsz'
+    else:
+        vsz_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),'template.vsz')
+    return vsz_path
 
 def get_color(n,start=0,stop=1):
     '''
@@ -310,7 +323,8 @@ def plot_1D(plot_dict):
     veusz_set.append("Remove('/contour')")
     # save to vsz
     output_filename = plot_dict['output']
-    shutil.copy2('template.vsz',output_filename+'.vsz')
+    vsz_path = get_veusz_template()
+    shutil.copy2(vsz_path,output_filename+'.vsz')
     veusz_file = open(output_filename+'.vsz','a')
     for  i in veusz_set:
         veusz_file.write(i+'\n')
@@ -393,7 +407,8 @@ def plot_2D(plot_dict):
     label_file.close()
     print("Label names were saved in "+output_filename+'_labelname.dat')
     veusz_set.append("Remove('/data')")
-    shutil.copy2('template.vsz',output_filename+'.vsz')
+    vsz_path = get_veusz_template()
+    shutil.copy2(vsz_path,output_filename+'.vsz')
     veusz_file = open(output_filename+'.vsz','a')
     for i in veusz_set:
         veusz_file.write(i+'\n')
@@ -665,35 +680,3 @@ def phase_diagram(input_xls,quality_2d=(500,500),lprobability=False,p_threshold=
         plot_2D(plot_dict)
 
 #    close_veusz(embed,vdisplay)
-
-if __name__ == '__main__':
-    # Constant
-    quality_2d = (500,500) # the quality for 2D contour map
-    import sys
-    args = sys.argv
-    lprobability = False
-    p_threshold = 0.05
-    filename = None
-    if (len(args) < 2):
-        print("usage: auto_phase_diagram.py xls_file [--probability threshold]")
-        exit(0)
-    else:
-        for idx,arg in enumerate(args):
-            if arg == '--probability':
-                try:
-                    p_threshold = float(args[idx+1])
-                    if p_threshold <= 0.0:
-                        print("Use default threshold 0.05.")
-                        p_threshold = 0.05
-                except:
-                    print("Use default threshold 0.05.")
-                    pass
-                lprobability = True
-            elif '.xls' in arg:
-                filename = arg
-                    
-    if not filename:
-        print("usage: auto_phase_diagram.py xls_file [--probability threshold]")
-        print(".xls file should be provided!")
-        exit(0)
-    phase_diagram(filename,quality_2d=quality_2d,lprobability=lprobability,p_threshold=p_threshold)
