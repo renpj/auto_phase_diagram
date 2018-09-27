@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 TODO:
+    * check xvfb whether is neccessory for windows os
 """
 from __future__ import division
 import numpy as np
