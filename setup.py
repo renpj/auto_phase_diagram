@@ -15,13 +15,17 @@ setup(
 
     packages = find_packages(),
     #include_package_data = True,
-    package_data = {"auto_phase_diagram": ["*.xlsx","*.vsz"]},
-
+    package_data = {"auto_phase_diagram": ["*.xlsx","*.vsz"]}, # use MANIFEST.in maybe
+    entry_points={
+        'console_scripts': [
+            'plot_phase_diagram = auto_phase_diagram.__main__:main'
+        ]
+    },
     platforms = "any",
     install_requires = [
         "numpy",
         "pandas",
-        "xlrt", 
+        "xlrd", 
         "xlwt"
     ] 
 )

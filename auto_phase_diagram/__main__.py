@@ -3,24 +3,23 @@
 from auto_phase_diagram import phase_diagram
 import shutil,os
 
-if __name__ == '__main__':
+def main(args=None):
+    import sys
     # Constant
     quality_2d = (500,500) # the quality for 2D contour map
-    import sys
-    args = sys.argv
+    if args == None:
+        args = sys.argv
     lprobability = False
     p_threshold = 0.05
     filename = None
     usage = """
-        usage: plot_phase_diagram.py xls_file [--probability threshold] [--example] [--template] 
-        xls_file: input excel file. 
-        --probability threshold: consider the mix phase distribution. If p > threshold, means the phase is possible. 
-        --example: copy example.xlsx into work dir.
-        --template: copy template.vsz into work dir.
+    usage: plot_phase_diagram.py xls_file [--probability threshold] [--example] [--template] 
+    xls_file: input excel file. 
+    --probability threshold: consider the mix phase distribution. If p > threshold, means the phase is possible. 
+    --example: copy example.xlsx into work dir.
+    --template: copy template.vsz into work dir.
     """
-    
     if ((len(args)==1) or (len(args)>4)):
-        print(len(args))
         print(usage)
         sys.exit()
     else:
@@ -53,3 +52,6 @@ if __name__ == '__main__':
         print(usage)
         sys.exit(".xls file should be provided!")
     phase_diagram(filename,quality_2d=quality_2d,lprobability=lprobability,p_threshold=p_threshold)
+    
+if __name__ == '__main__':
+    main()

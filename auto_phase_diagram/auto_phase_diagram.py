@@ -65,16 +65,20 @@ def start_veusz():
     global isveusz
     try:
         import veusz.embed
-        isveusz = True
-        print("The data will be plotted by Veusz!")
-        from xvfbwrapper import Xvfb
-        vdisplay = Xvfb()
-        vdisplay.start()
+        import platform
+        if platform.system() in ['Windows']:
+            vdisplay = None
+        else:
+            from xvfbwrapper import Xvfb
+            vdisplay = Xvfb()
+            vdisplay.start()
         embed = veusz.embed.Embedded(hidden=True)
+        print("The data will be plotted by Veusz!")
+        isveusz = True
         return embed,vdisplay
     except:
         isveusz = False
-        print("Can't import Veusz, the data will not be plotted!")
+        print("Can't import Veusz environment, the data will not be plotted!")
         return None,None
 
 def close_veusz(embed,vdisplay):
